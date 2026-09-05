@@ -43,6 +43,14 @@ export default defineConfig({
         // A throwaway database: the smoke test must never write into, or depend on,
         // whatever the developer has in their dev database. `make e2e` deletes it first.
         DATABASE_URL: process.env.E2E_DATABASE_URL ?? "sqlite:///./data/e2e.db",
+        // A fixed three-attorney roster so the assignment specs do not depend on
+        // whatever the developer happens to have in their .env. Placeholder
+        // addresses only -- no personal data reaches a fixture.
+        ATTORNEYS: JSON.stringify([
+          { email: "attorney@example.com", password: "changeme", name: "Alex Chen" },
+          { email: "sam@example.com", password: "changeme", name: "Sam Reyes" },
+          { email: "nina@example.com", password: "changeme", name: "Nina Patel" },
+        ]),
       },
     },
     {

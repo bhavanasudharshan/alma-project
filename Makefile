@@ -13,7 +13,7 @@ help:
 	@echo "make dev      - run api and web together"
 	@echo "make api      - run the FastAPI server on :8000"
 	@echo "make web      - run the Next.js dev server on :3000"
-	@echo "make test     - pytest"
+	@echo "make test     - pytest + web unit tests (vitest)"
 	@echo "make lint     - ruff check + ruff format --check + pnpm lint + tsc --noEmit"
 	@echo "make fmt      - ruff format + ruff check --fix"
 	@echo "make migrate  - alembic upgrade head"
@@ -47,8 +47,11 @@ dev:
 	trap 'kill $$api_pid $$web_pid 2>/dev/null' INT TERM EXIT; \
 	wait $$api_pid $$web_pid
 
+# Both suites: the API's pytest and the web layer's Vitest units. `make e2e` is kept
+# separate because it boots servers and a browser.
 test:
 	cd $(API_DIR) && uv run pytest -q
+	cd $(WEB_DIR) && pnpm test
 
 # Boots the API and the web app itself, so this works from a cold start.
 # Runs against a throwaway database that is deleted first, so a smoke run never
