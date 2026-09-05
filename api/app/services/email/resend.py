@@ -23,6 +23,8 @@ class ResendEmailService:
         text: str,
         html: str | None = None,
         lead_id: str | None = None,
+        cc: list[str] | None = None,
+        reply_to: str | None = None,
     ) -> None:
         """Send one message.
 
@@ -39,6 +41,10 @@ class ResendEmailService:
         }
         if html:
             params["html"] = html
+        if cc:
+            params["cc"] = cc
+        if reply_to:
+            params["reply_to"] = reply_to
 
         try:
             result = resend.Emails.send(params)

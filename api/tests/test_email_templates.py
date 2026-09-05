@@ -101,3 +101,31 @@ def test_snapshot_is_detached_from_the_orm(created_lead: dict, db_session) -> No
 
     message = prospect_confirmation(snap)  # must not raise DetachedInstanceError
     assert snap.tracking_code in message.text
+
+
+def test_status_change_without_an_assignee_keeps_the_neutral_wording() -> None:
+    """M(b): no attorney, no name — and no Reply-To pointing nowhere."""
+    from app.services.email.messages import status_changed
+
+    message = status_changed(snapshot(state="REACHED_OUT"))
+
+    assert message is not None
+    assert "An attorney has reviewed your submission" in message.text
+    assert message.reply_to is None
+
+
+def test_status_change_with_an_assignee_names_them_and_sets_reply_to() -> None:
+    """M(b): the update reads as a message from a person."""
+    from app.services.email.messages import status_changed
+
+    message = status_changed(
+        snapshot(
+            state="QUALIFIED",
+            assigned_to="sam@example.com",
+            assigned_to_name="Sam Reyes",
+        )
+    )
+
+    assert message is not None
+    assert "Sam Reyes has marked your application as qualified" in message.text
+    assert message.reply_to == "sam@example.com"

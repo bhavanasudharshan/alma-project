@@ -37,6 +37,8 @@ class EmailMessage:
     subject: str
     text: str
     html: str | None = None
+    cc: list[str] | None = None
+    reply_to: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,9 +59,12 @@ class LeadSnapshot:
     state: str
     tracking_code: str
     received_at: str
+    # FR10: the owning attorney, and their display name when the roster resolves it.
+    assigned_to: str | None = None
+    assigned_to_name: str | None = None
 
     @classmethod
-    def from_lead(cls, lead) -> "LeadSnapshot":  # noqa: ANN001 - avoids a db import here
+    def from_lead(cls, lead, assigned_to_name: str | None = None) -> "LeadSnapshot":  # noqa: ANN001
         """Copy the fields off an ORM instance while its session is still open."""
         return cls(
             id=str(lead.id),
@@ -71,6 +76,8 @@ class LeadSnapshot:
             state=str(lead.state),
             tracking_code=lead.tracking_code,
             received_at=lead.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            assigned_to=lead.assigned_to,
+            assigned_to_name=assigned_to_name,
         )
 
 
@@ -79,7 +86,7 @@ def prospect_confirmation(lead: LeadSnapshot, status_portal_url: str = "") -> Em
     text = (
         f"Hi {lead.first_name},\n\n"
         "Thanks for submitting your information. An attorney will review your "
-        "background and reach out to you directly about next steps.\n\n"
+        "application and reach out to you.\n\n"
         "What we received:\n"
         f"  Name:   {lead.first_name} {lead.last_name}\n"
         f"  Email:  {lead.email}\n"
@@ -106,11 +113,22 @@ def prospect_confirmation(lead: LeadSnapshot, status_portal_url: str = "") -> Em
         subject=_single_line("We received your information"),
         text=text,
         html=html,
+        # The owning attorney is copied so they see the thread from the start, and a
+        # reply reaches them directly. Only ever the assignee -- never a shared inbox,
+        # which would expose the prospect's details more widely than necessary (C1).
+        cc=[lead.assigned_to] if lead.assigned_to else None,
+        reply_to=lead.assigned_to,
     )
 
 
 # What the prospect is told for each state they can be moved into (EXT2). Adding a
 # state means adding a row here; a missing row simply means no email is sent.
+# Used when a named attorney owns the lead: "<name> has reached out ...".
+_STATUS_COPY_ASSIGNED: dict[str, str] = {
+    "REACHED_OUT": "{name} has reached out regarding your application.",
+    "QUALIFIED": "{name} has marked your application as qualified.",
+}
+
 _STATUS_COPY: dict[str, tuple[str, str]] = {
     "REACHED_OUT": (
         "An attorney has reviewed your submission and is reaching out to you.",
@@ -137,6 +155,13 @@ def status_changed(lead: LeadSnapshot, status_portal_url: str = "") -> EmailMess
         return None
     headline, detail = copy
 
+    # Naming the attorney turns a system notice into a message from a person. Only when
+    # the roster still resolves the name -- never expose a bare email address here.
+    if lead.assigned_to_name:
+        named = _STATUS_COPY_ASSIGNED.get(lead.state)
+        if named:
+            headline = named.format(name=lead.assigned_to_name)
+
     text_lines = [f"Hi {lead.first_name},", "", headline, "", detail, ""]
     if status_portal_url:
         text_lines += [
@@ -158,6 +183,8 @@ def status_changed(lead: LeadSnapshot, status_portal_url: str = "") -> EmailMess
         subject=_single_line("An update on your submission"),
         text="\n".join(text_lines),
         html=html,
+        # A reply should reach the attorney handling the case, not a shared inbox.
+        reply_to=lead.assigned_to if lead.assigned_to_name else None,
     )
 
 

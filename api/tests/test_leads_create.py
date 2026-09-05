@@ -44,7 +44,8 @@ def test_emails_sent_to_prospect_and_attorney(client: TestClient, emails: FakeEm
         files=resume_file(),
     )
 
-    assert emails.recipients == ["grace@example.com", "intake@example.com"]
+    # FR10: the notification goes to the auto-assigned attorney, not a shared inbox.
+    assert emails.recipients == ["grace@example.com", "attorney@example.com"]
     attorney_body = emails.sent[1]["text"]
     assert "Grace" not in attorney_body  # the form name was Ada, not the email local part
     assert "cv.pdf" in attorney_body

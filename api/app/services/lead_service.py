@@ -96,6 +96,24 @@ class LeadService:
 
     # --- commands ------------------------------------------------------------
 
+    def choose_assignee(self) -> str | None:
+        """Pick the attorney with the fewest open leads (FR10).
+
+        Ties break on roster order, which makes the choice deterministic and therefore
+        testable -- and gives the first-listed attorney the first lead on a cold start,
+        rather than an arbitrary one.
+
+        Returns ``None`` when no roster is configured, in which case leads stay
+        unassigned and notifications fall back to the shared inbox.
+        """
+        roster = [str(attorney.email).lower() for attorney in self._settings.attorneys]
+        if not roster:
+            return None
+
+        counts = self._repo.open_lead_counts()
+        # min() is stable, so the earliest roster entry wins a tie.
+        return min(roster, key=lambda email: counts.get(email, 0))
+
     def create_lead(self, data: LeadCreate, upload: ResumeUpload) -> Lead:
         """Validate the upload, store the file, then persist the lead (FR1).
 
@@ -121,13 +139,20 @@ class LeadService:
             resume_content_type=upload.content_type,
             state=LeadState.PENDING,
             tracking_code=generate_tracking_code(),
+            # Chosen before the insert so the owner is set atomically with the lead
+            # itself: a submission is never briefly ownerless (FR10).
+            assigned_to=self.choose_assignee(),
         )
 
         try:
             self._repo.create(lead)
             # Same transaction as the insert, so the trail can never disagree (SEC9).
             self._repo.add_event(
-                lead_id=lead.id, from_state=None, to_state=LeadState.PENDING, actor=SYSTEM_ACTOR
+                lead_id=lead.id,
+                from_state=None,
+                to_state=LeadState.PENDING,
+                actor=SYSTEM_ACTOR,
+                to_assignee=lead.assigned_to,
             )
             self._db.commit()
         except Exception:
@@ -289,6 +314,8 @@ class LeadService:
                 text=message.text,
                 html=message.html,
                 lead_id=lead.id,
+                cc=message.cc,
+                reply_to=message.reply_to,
             )
         except Exception:  # noqa: BLE001 - a broken provider must not surface here
             logger.exception("Failed to send the status update for lead_id=%s", lead.id)
@@ -304,11 +331,14 @@ class LeadService:
         must not be lost because email broke (R1). The price is at-most-once delivery;
         the upgrade is a transactional outbox, noted in DESIGN.md.
         """
+        # The owning attorney gets the notification directly; the shared inbox is the
+        # fallback for an unassigned lead, which only happens with an empty roster.
+        notify_email = lead.assigned_to or self._settings.attorney_notify_email
         messages = (
             prospect_confirmation(lead, self._settings.status_portal_url),
             attorney_notification(
                 lead,
-                notify_email=self._settings.attorney_notify_email,
+                notify_email=notify_email,
                 internal_ui_url=self._settings.internal_ui_url,
             ),
         )
@@ -320,6 +350,8 @@ class LeadService:
                     text=message.text,
                     html=message.html,
                     lead_id=lead.id,
+                    cc=message.cc,
+                    reply_to=message.reply_to,
                 )
             except Exception:  # noqa: BLE001 - a broken provider must not surface here
                 logger.exception("Failed to send %r for lead_id=%s", message.subject, lead.id)

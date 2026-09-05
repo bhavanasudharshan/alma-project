@@ -19,7 +19,8 @@ def test_reached_out_emails_the_prospect(
 
     assert emails.recipients == ["ada@example.com"]
     assert emails.sent[0]["subject"] == "An update on your submission"
-    assert "reaching out" in emails.sent[0]["text"]
+    # M(b): the update names the attorney who owns the lead.
+    assert "has reached out regarding your application" in emails.sent[0]["text"]
 
 
 def test_qualified_emails_the_prospect_with_its_own_copy(
@@ -32,7 +33,7 @@ def test_qualified_emails_the_prospect_with_its_own_copy(
     patch_state(client, created_lead["id"], "QUALIFIED", auth_headers)
 
     assert len(emails.sent) == 1
-    assert "strong fit" in emails.sent[0]["text"]
+    assert "marked your application as qualified" in emails.sent[0]["text"]
 
 
 def test_the_status_email_carries_the_portal_link_and_code(

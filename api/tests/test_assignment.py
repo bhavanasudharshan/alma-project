@@ -86,14 +86,28 @@ def test_token_carries_the_display_name(client: TestClient) -> None:
 # --- assignment --------------------------------------------------------------------
 
 
-def test_a_new_lead_is_unassigned(client: TestClient, auth_headers: dict) -> None:
-    """Unassigned is the normal starting point."""
+def test_a_new_lead_is_auto_assigned(client: TestClient, auth_headers: dict) -> None:
+    """FR10: with a roster configured, a submission never sits ownerless."""
     lead_id = make_lead(client)
 
     lead = client.get(f"/api/v1/leads/{lead_id}", headers=auth_headers).json()
 
-    assert lead["assigned_to"] is None
-    assert lead["assigned_to_name"] is None
+    assert lead["assigned_to"] == ATTORNEY_EMAIL
+    assert lead["assigned_to_name"] == ATTORNEY_NAME
+
+
+def test_a_lead_can_be_returned_to_the_unassigned_pool(
+    client: TestClient, auth_headers: dict
+) -> None:
+    """Clearing an assignment is still possible after auto-assignment."""
+    lead_id = make_lead(client)
+
+    response = client.patch(
+        f"/api/v1/leads/{lead_id}/assign", json={"assignee": None}, headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["assigned_to"] is None
 
 
 def test_assign_to_self(client: TestClient, auth_headers: dict) -> None:
@@ -181,7 +195,7 @@ def test_assigning_the_same_attorney_twice_is_idempotent(
 
 
 def test_assignment_writes_an_audit_row(client: TestClient, auth_headers: dict) -> None:
-    """SEC9: who assigned what to whom, and when."""
+    """SEC9: who reassigned what to whom, and when."""
     lead_id = make_lead(client)
 
     client.patch(
@@ -192,7 +206,8 @@ def test_assignment_writes_an_audit_row(client: TestClient, auth_headers: dict) 
 
     events = client.get(f"/api/v1/leads/{lead_id}", headers=auth_headers).json()["events"]
     assignment = events[-1]
-    assert assignment["from_assignee"] is None
+    # The lead was auto-assigned at creation, so this is a hand-off, not a first claim.
+    assert assignment["from_assignee"] == ATTORNEY_EMAIL
     assert assignment["to_assignee"] == SECOND_ATTORNEY_EMAIL
     assert assignment["actor"] == ATTORNEY_EMAIL
     # The state did not move, so both ends record the state it stayed in.
@@ -245,11 +260,10 @@ def test_filter_by_assignee(client: TestClient, auth_headers: dict) -> None:
 
 def test_filter_unassigned(client: TestClient, auth_headers: dict) -> None:
     """The unowned pool is what an attorney picks work from."""
-    claimed = make_lead(client, "Ada")
-    make_lead(client, "Grace")
-    client.patch(
-        f"/api/v1/leads/{claimed}/assign", json={"assignee": ATTORNEY_EMAIL}, headers=auth_headers
-    )
+    make_lead(client, "Ada")
+    released = make_lead(client, "Grace")
+    # Everything is auto-assigned now, so create the unowned case explicitly.
+    client.patch(f"/api/v1/leads/{released}/assign", json={"assignee": None}, headers=auth_headers)
 
     page = client.get("/api/v1/leads?assigned_to=unassigned", headers=auth_headers).json()
 

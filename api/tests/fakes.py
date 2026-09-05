@@ -62,9 +62,19 @@ class FakeEmailService:
         text: str,
         html: str | None = None,
         lead_id: str | None = None,
+        cc: list[str] | None = None,
+        reply_to: str | None = None,
     ) -> None:
         self.sent.append(
-            {"to": to, "subject": subject, "text": text, "html": html, "lead_id": lead_id}
+            {
+                "to": to,
+                "subject": subject,
+                "text": text,
+                "html": html,
+                "lead_id": lead_id,
+                "cc": cc,
+                "reply_to": reply_to,
+            }
         )
 
     @property

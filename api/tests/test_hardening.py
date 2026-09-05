@@ -88,11 +88,13 @@ def test_honeypot_submission_is_silently_dropped(client: TestClient, emails) -> 
     """SEC4: a filled hidden field means a bot. Answer 202, store nothing."""
     response = client.post(
         "/api/v1/leads",
-        data={**lead_form(), "website": "http://spam.example"},
+        data={**lead_form(), "contact_ref_2": "http://spam.example"},
         files=upload("cv.pdf", PDF_BYTES, "application/pdf"),
     )
 
     assert response.status_code == 202
+    # No body at all: the client must not try to parse one (NOTES.md #17).
+    assert response.content == b""
     assert emails.sent == []
 
     listed = client.get("/api/v1/leads", headers={"Authorization": "Bearer x"})
@@ -103,7 +105,7 @@ def test_empty_honeypot_is_the_normal_path(client: TestClient) -> None:
     """A real browser leaves the field empty, which must behave exactly as before."""
     response = client.post(
         "/api/v1/leads",
-        data={**lead_form(), "website": ""},
+        data={**lead_form(), "contact_ref_2": ""},
         files=upload("cv.pdf", PDF_BYTES, "application/pdf"),
     )
 

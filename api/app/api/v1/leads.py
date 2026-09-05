@@ -75,22 +75,29 @@ def create_lead(
     request: Request,
     background_tasks: BackgroundTasks,
     service: LeadServiceDep,
+    directory: DirectoryDep,
     first_name: Annotated[str, Form(max_length=100)],
     last_name: Annotated[str, Form(max_length=100)],
     email: Annotated[str, Form(max_length=320)],
     resume: Annotated[UploadFile, File()],
-    website: Annotated[str, Form(max_length=200)] = "",
+    contact_ref_2: Annotated[str, Form(max_length=200)] = "",
 ) -> LeadRead | Response:
     """Create a lead from the public form (FR1).
 
     Emails are scheduled only after ``create_lead`` has committed, so a provider
     outage can never roll back or fail an accepted submission (R1).
 
-    ``website`` is a honeypot (SEC4): it is hidden from people and left empty by real
-    browsers, so anything in it means a bot. Those get a 202 and nothing is stored --
-    answering normally denies the bot the signal it would use to adapt.
+    ``contact_ref_2`` is a honeypot (SEC4). The name is deliberately meaningless:
+    it was called ``website``, and Chrome's address autofill filled it for real
+    applicants with a saved profile -- ``autocomplete="off"`` is advisory and Chrome
+    ignores it -- so genuine submissions were silently discarded (NOTES.md #17). A name
+    no autofill heuristic recognises is the fix; the field is still hidden, unfocusable
+    and marked aria-hidden on the client.
+
+    A tripped honeypot gets a 202 and nothing is stored. Answering normally denies the
+    bot the signal it would use to adapt.
     """
-    if website.strip():
+    if contact_ref_2.strip():
         client = request.client.host if request.client else "-"
         logger.info("Dropped a honeypot submission from %s", client)
         # Returning a Response directly bypasses response_model validation, which is
@@ -113,7 +120,10 @@ def create_lead(
 
     lead = service.create_lead(data, upload)
     # A detached snapshot: the session is closed by the time the task runs.
-    background_tasks.add_task(service.send_intake_emails, LeadSnapshot.from_lead(lead))
+    background_tasks.add_task(
+        service.send_intake_emails,
+        LeadSnapshot.from_lead(lead, directory.name_for(lead.assigned_to)),
+    )
     return LeadRead.model_validate(lead)
 
 
@@ -292,7 +302,8 @@ def update_lead_state(
 
     if change.notify_prospect:
         background_tasks.add_task(
-            service.send_status_change_email, LeadSnapshot.from_lead(change.lead)
+            service.send_status_change_email,
+            LeadSnapshot.from_lead(change.lead, directory.name_for(change.lead.assigned_to)),
         )
 
     return to_read(change.lead, directory)

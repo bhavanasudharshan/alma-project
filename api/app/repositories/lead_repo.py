@@ -97,6 +97,21 @@ class LeadRepository:
         )
         return items, total
 
+    def open_lead_counts(self) -> dict[str, int]:
+        """How many open leads each attorney currently owns (FR10 auto-assign).
+
+        "Open" is PENDING or REACHED_OUT: a QUALIFIED lead has been through triage and
+        should not count against the person who handled it. One GROUP BY rather than a
+        query per attorney, so adding attorneys does not add round trips.
+        """
+        rows = self._db.execute(
+            select(Lead.assigned_to, func.count())
+            .where(Lead.assigned_to.is_not(None))
+            .where(Lead.state.in_([LeadState.PENDING, LeadState.REACHED_OUT]))
+            .group_by(Lead.assigned_to)
+        ).all()
+        return {email: count for email, count in rows if email}
+
     def update_assignee(self, lead_id: uuid.UUID, current: str | None, new: str | None) -> bool:
         """Atomically move a lead from ``current`` to ``new`` assignee (FR10).
 

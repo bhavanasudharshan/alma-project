@@ -21,11 +21,15 @@ class ConsoleEmailService:
         text: str,
         html: str | None = None,
         lead_id: str | None = None,
+        cc: list[str] | None = None,
+        reply_to: str | None = None,
     ) -> None:
         """Log the message. Never raises (R1)."""
         logger.info(
-            "EMAIL (console) to=%s subject=%r lead_id=%s",
+            "EMAIL (console) to=%s cc=%s reply_to=%s subject=%r lead_id=%s",
             to,
+            ",".join(cc) if cc else "-",
+            reply_to or "-",
             subject,
             lead_id or "-",
         )
