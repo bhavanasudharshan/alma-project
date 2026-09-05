@@ -29,6 +29,16 @@ class InvalidTransition(DomainError):
     code = "invalid_transition"
 
 
+class AlreadyInState(DomainError):
+    """The lead is already in the requested state.
+
+    Distinct from :class:`InvalidTransition` so a client can tell "nothing to do" apart
+    from "that move is illegal". Both are HTTP 409; only this one is benign.
+    """
+
+    code = "already_in_state"
+
+
 class UnsupportedResumeType(DomainError):
     """Upload rejected by the content-type / extension allow-list (S2)."""
 

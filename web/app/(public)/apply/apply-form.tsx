@@ -32,8 +32,11 @@ export function ApplyForm() {
     resolver: zodResolver(leadClientSchema),
   });
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = handleSubmit(async (values, event) => {
     const payload = new FormData();
+    // Not registered with react-hook-form: read it straight off the form element.
+    const honeypot = new FormData(event?.target as HTMLFormElement).get("website");
+    payload.set("website", typeof honeypot === "string" ? honeypot : "");
     payload.set("first_name", values.first_name);
     payload.set("last_name", values.last_name);
     payload.set("email", values.email);
@@ -107,6 +110,16 @@ export function ApplyForm() {
         <FieldError id="email-error" message={fieldError("email")} />
       </div>
 
+      {/*
+        SEC4 honeypot. Hidden from sighted users and from screen readers, and skipped
+        by keyboard navigation, so a real applicant can never fill it in. Bots that
+        auto-complete every field will, and the API silently drops those.
+      */}
+      <div aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 overflow-hidden">
+        <label htmlFor="website">Website (leave blank)</label>
+        <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <label htmlFor="resume" className="text-sm font-medium">
           CV or resume
@@ -123,7 +136,7 @@ export function ApplyForm() {
           {...register("resume")}
         />
         <p id="resume-hint" className="text-xs text-gray-600 dark:text-gray-400">
-          PDF, DOC or DOCX, up to 5 MB.
+          PDF or DOCX, up to 5 MB.
         </p>
         <FieldError id="resume-error" message={fieldError("resume")} />
       </div>

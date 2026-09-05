@@ -16,10 +16,12 @@ from app.db.session import get_db
 from app.repositories.lead_repo import LeadRepository
 from app.services.email.base import EmailService
 from app.services.email.console import ConsoleEmailService
+from app.services.email.resend import ResendEmailService
 from app.services.exceptions import InvalidCredentials
 from app.services.lead_service import LeadService
 from app.services.storage.base import FileStorage
 from app.services.storage.local import LocalDiskStorage
+from app.services.storage.s3 import S3Storage
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +36,31 @@ _bearer = HTTPBearer(auto_error=False)
 # arguments and read the cached settings object themselves.
 @lru_cache
 def get_email_service() -> EmailService:
-    """Console in P0; Resend is selected here in P1 when RESEND_API_KEY is set."""
+    """Resend when an API key is configured, console otherwise (M4).
+
+    Selection is by configuration alone -- no service or router knows which one it got.
+    """
+    settings = get_settings()
+    if settings.uses_resend:
+        logger.info("Email adapter: Resend (from=%s)", settings.email_from)
+        return ResendEmailService(settings)
+    logger.info("Email adapter: console (set RESEND_API_KEY to send for real)")
     return ConsoleEmailService()
 
 
 @lru_cache
 def get_file_storage() -> FileStorage:
-    """Local disk in P0; S3/MinIO is selected here in P1 when S3_ENDPOINT_URL is set."""
-    return LocalDiskStorage(root=get_settings().upload_path)
+    """S3/MinIO when object storage is configured, local disk otherwise (M4/E2)."""
+    settings = get_settings()
+    if settings.uses_s3:
+        logger.info(
+            "Storage adapter: S3 (bucket=%s endpoint=%s)",
+            settings.s3_bucket,
+            settings.s3_endpoint_url or "aws",
+        )
+        return S3Storage(settings)
+    logger.info("Storage adapter: local disk (%s)", settings.upload_path)
+    return LocalDiskStorage(root=settings.upload_path)
 
 
 @lru_cache

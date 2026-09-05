@@ -63,6 +63,30 @@ class LeadRead(BaseModel):
         return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+class LeadEventRead(BaseModel):
+    """One row of a lead's audit trail (SEC9)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    from_state: LeadState | None
+    to_state: LeadState
+    actor: str
+    created_at: datetime
+
+    _as_utc = field_validator("created_at", mode="after")(
+        lambda cls, value: value if value.tzinfo else value.replace(tzinfo=UTC)
+    )
+
+
+class LeadDetail(LeadRead):
+    """A single lead plus its audit trail. Internal route only."""
+
+    events: list[LeadEventRead] = []
+    # Present only when the storage backend can sign one; the proxy route always works.
+    resume_url: str | None = None
+
+
 class LeadListResponse(BaseModel):
     """One page of leads plus the total matching count (FR5)."""
 

@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: api (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Test (SQLite — the zero-infra default)
+        run: uv run pytest -q
+
+  api-postgres:
+    name: api (postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+
+    # The same suite against the engine production would actually use. SQLite and
+    # Postgres disagree about UUIDs, timezone handling and DDL, so a green SQLite run
+    # is not evidence the Postgres path works (M4/E2).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alma
+          POSTGRES_PASSWORD: alma
+          POSTGRES_DB: alma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alma -d alma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg://alma:alma@localhost:5432/alma
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run migrations against Postgres
+        run: uv run alembic upgrade head
+
+      - name: Verify the schema is current (no model/migration drift)
+        run: uv run alembic check
+
+      - name: Test
+        run: uv run pytest -q
+
+  web:
+    name: web (lint + tsc + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Build
+        run: pnpm build

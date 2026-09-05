@@ -1,18 +1,21 @@
 """Lead intake business logic. Framework-free so it is testable without HTTP (M1)."""
 
 import logging
+import secrets
 import uuid
+from base64 import b32encode
 from dataclasses import dataclass
 from typing import BinaryIO
 
+import filetype
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.db.models.lead import Lead, LeadState
+from app.db.models.lead import Lead, LeadEvent, LeadState
 from app.repositories.lead_repo import LeadRepository
 from app.schemas.lead import LeadCreate
 from app.services.email.base import EmailService
-from app.services.email.messages import attorney_notification, prospect_confirmation
+from app.services.email.messages import LeadSnapshot, attorney_notification, prospect_confirmation
 from app.services.exceptions import (
     InvalidTransition,
     LeadNotFound,
@@ -25,6 +28,25 @@ from app.services.storage.base import FileStorage
 from app.services.storage.local import build_key
 
 logger = logging.getLogger(__name__)
+
+SYSTEM_ACTOR = "system"
+
+# 160 bits of entropy, base32 without padding: unguessable, and safe to read aloud or
+# paste into a form. Deliberately not derived from the lead id (SEC7).
+_TRACKING_CODE_BYTES = 20
+
+# Magic-byte signatures we accept, mapped to the extension they must agree with (SEC2).
+# DOCX is a ZIP container, so the sniffer reports it as such.
+_SIGNATURE_EXTENSIONS: dict[str, set[str]] = {
+    "pdf": {".pdf"},
+    "zip": {".docx"},
+    "docx": {".docx"},
+}
+
+
+def generate_tracking_code() -> str:
+    """Return a high-entropy, human-transcribable tracking code (EXT1)."""
+    return b32encode(secrets.token_bytes(_TRACKING_CODE_BYTES)).decode().rstrip("=")
 
 
 @dataclass
@@ -79,10 +101,15 @@ class LeadService:
             resume_filename=upload.filename,
             resume_content_type=upload.content_type,
             state=LeadState.PENDING,
+            tracking_code=generate_tracking_code(),
         )
 
         try:
             self._repo.create(lead)
+            # Same transaction as the insert, so the trail can never disagree (SEC9).
+            self._repo.add_event(
+                lead_id=lead.id, from_state=None, to_state=LeadState.PENDING, actor=SYSTEM_ACTOR
+            )
             self._db.commit()
         except Exception:
             self._db.rollback()
@@ -93,25 +120,27 @@ class LeadService:
         self._db.refresh(lead)
         return lead
 
-    def change_state(self, lead_id: uuid.UUID, new_state: LeadState) -> Lead:
+    def change_state(self, lead_id: uuid.UUID, new_state: LeadState, actor: str) -> Lead:
         """Move a lead to ``new_state`` if the transition table allows it (FR8/FR9).
 
         Two guards, deliberately: ``assert_transition`` is a fast in-process check that
-        produces the human-readable message, but it is only advisory -- between its
-        SELECT and the UPDATE another request can change the row. The SQL predicate in
-        ``update_state`` is the source of truth, so exactly one of N concurrent callers
-        can win and the rest get a 409 (R2).
+        produces the human-readable message and distinguishes "already there" from
+        "illegal move", but it is only advisory -- between its SELECT and the UPDATE
+        another request can change the row. The SQL predicate in ``update_state`` is
+        the source of truth, so exactly one of N concurrent callers can win (R2).
         """
         lead = self.get_lead(lead_id)
         assert_transition(lead.state, new_state)
+        previous = lead.state
 
-        if not self._repo.update_state(lead.id, lead.state, new_state):
+        if not self._repo.update_state(lead.id, previous, new_state):
             self._db.rollback()
             raise InvalidTransition(
-                f"Cannot move a lead from {lead.state} to {new_state}; "
+                f"Cannot move a lead from {previous} to {new_state}; "
                 "it was changed by another request."
             )
 
+        self._repo.add_event(lead_id=lead.id, from_state=previous, to_state=new_state, actor=actor)
         self._db.commit()
         self._db.refresh(lead)
         return lead
@@ -124,6 +153,11 @@ class LeadService:
         if lead is None:
             raise LeadNotFound(f"No lead with id {lead_id}.")
         return lead
+
+    def get_lead_with_events(self, lead_id: uuid.UUID) -> tuple[Lead, list[LeadEvent]]:
+        """Return a lead and its audit trail (SEC9)."""
+        lead = self.get_lead(lead_id)
+        return lead, self._repo.list_events(lead.id)
 
     def list_leads(
         self, state: LeadState | None, limit: int, offset: int
@@ -138,15 +172,22 @@ class LeadService:
         except FileNotFoundError as exc:
             raise LeadNotFound(f"The resume for lead {lead.id} is no longer available.") from exc
 
+    def resume_url(self, lead: Lead, expires: int = 300) -> str | None:
+        """A presigned direct URL when the backend supports one, else ``None`` (E2)."""
+        return self._storage.presigned_url(lead.resume_key, expires=expires)
+
     # --- notifications -------------------------------------------------------
 
-    def send_intake_emails(self, lead: Lead) -> None:
+    def send_intake_emails(self, lead: LeadSnapshot) -> None:
         """Send prospect confirmation and attorney notification (FR2/FR3).
 
-        Runs in a background task after the response is returned. Provider failures
-        are logged and swallowed: the lead is already committed and must not be lost
-        because email broke (R1). The price is at-most-once delivery -- the upgrade
-        is a transactional outbox, noted in DESIGN.md.
+        Takes a detached snapshot rather than the ORM instance: this runs in a
+        background task after the request's session has closed, so touching a live
+        model here would be a latent lazy-load error.
+
+        Provider failures are logged and swallowed -- the lead is already committed and
+        must not be lost because email broke (R1). The price is at-most-once delivery;
+        the upgrade is a transactional outbox, noted in DESIGN.md.
         """
         messages = (
             prospect_confirmation(lead),
@@ -158,18 +199,24 @@ class LeadService:
         )
         for message in messages:
             try:
-                self._email.send(to=message.to, subject=message.subject, text=message.text)
+                self._email.send(
+                    to=message.to,
+                    subject=message.subject,
+                    text=message.text,
+                    html=message.html,
+                    lead_id=lead.id,
+                )
             except Exception:  # noqa: BLE001 - a broken provider must not surface here
-                logger.exception("Failed to send %r to %s", message.subject, message.to)
+                logger.exception("Failed to send %r for lead_id=%s", message.subject, lead.id)
 
     # --- internals -----------------------------------------------------------
 
     def _validate_upload(self, upload: ResumeUpload) -> None:
-        """Enforce the upload allow-list and size cap (S2).
+        """Enforce the upload allow-list and size cap (S2/SEC2).
 
-        Both the declared content type and the file extension must be allowed; a
-        mismatch between them is still rejected. Content sniffing and virus scanning
-        are the next layer and are deliberately out of scope here.
+        Three things must agree: the declared content type, the file extension, and the
+        actual leading bytes. Checking only the first two lets an executable through
+        simply by renaming it, which is exactly what the P0 audit demonstrated.
         """
         settings = self._settings
 
@@ -191,6 +238,32 @@ class LeadService:
             raise ResumeTooLarge(f"Resume exceeds the {settings.max_resume_mb} MB limit.")
         if size == 0:
             raise UnsupportedResumeType("The uploaded resume is empty.")
+
+        self._assert_magic_bytes_match(upload, suffix)
+
+    @staticmethod
+    def _assert_magic_bytes_match(upload: ResumeUpload, suffix: str) -> None:
+        """Reject a file whose real type disagrees with its name (SEC2).
+
+        Content sniffing is not a malware scanner -- a valid PDF can still be hostile.
+        It closes the trivial "rename evil.exe to cv.pdf" path; AV scanning is the next
+        layer and is named in DESIGN.md.
+        """
+        header = upload.stream.read(261)
+        upload.stream.seek(0)
+
+        kind = filetype.guess(header)
+        if kind is None:
+            raise UnsupportedResumeType(
+                "That file does not look like a PDF or DOCX. Please upload a real document."
+            )
+
+        allowed = _SIGNATURE_EXTENSIONS.get(kind.extension, set())
+        if suffix not in allowed:
+            raise UnsupportedResumeType(
+                f"The file contents look like {kind.extension!r}, which does not match "
+                f"the {suffix} extension."
+            )
 
     @staticmethod
     def _measure(stream: BinaryIO) -> int:

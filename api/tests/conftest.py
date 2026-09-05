@@ -1,6 +1,8 @@
 """Test fixtures: an isolated app over a temp SQLite file with fake adapters (M2)."""
 
 import io
+import os
+import zipfile
 from collections.abc import Iterator
 
 import pytest
@@ -15,6 +17,7 @@ from app.core.deps import (
     get_file_storage,
     get_settings,
 )
+from app.core.limiter import limiter
 from app.core.security import AttorneyDirectory
 from app.db.base import Base
 from app.db.models import Lead  # noqa: F401  (registers the table on Base.metadata)
@@ -22,18 +25,60 @@ from app.db.session import get_db
 from app.main import create_app
 from tests.fakes import FakeEmailService, FakeStorage
 
+# CI runs this suite twice: once on the zero-infra SQLite default, once against a real
+# Postgres service. Reading the ambient DATABASE_URL is what makes the second run mean
+# something -- otherwise both jobs would exercise SQLite and the Postgres job would be
+# theatre. (config.py owns the app's environment access; this is test scaffolding.)
+AMBIENT_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+USE_POSTGRES = AMBIENT_DATABASE_URL.startswith("postgresql")
+
 ATTORNEY_EMAIL = "attorney@example.com"
 ATTORNEY_PASSWORD = "test-password"
 
+# Real PDF magic bytes: the service sniffs content, so a fixture must look like one.
 PDF_BYTES = b"%PDF-1.4 fake resume bytes"
 PDF_CONTENT_TYPE = "application/pdf"
+DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def docx_bytes() -> bytes:
+    """A minimal but genuine ZIP, which is what a .docx is on the wire."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+    return buffer.getvalue()
+
+
+@pytest.fixture(autouse=True)
+def _disable_rate_limits() -> Iterator[None]:
+    """SEC1 limits are per-IP and every test shares one; leave them off by default.
+
+    ``tests/test_rate_limit.py`` re-enables them explicitly for the cases that assert
+    the limiter actually fires.
+    """
+    original = limiter.enabled
+    limiter.enabled = False
+    yield
+    limiter.enabled = original
+
+
+def database_url_for_tests(tmp_path) -> str:
+    """The engine under test: ambient Postgres in CI, else a throwaway SQLite file."""
+    return AMBIENT_DATABASE_URL if USE_POSTGRES else f"sqlite:///{tmp_path / 'test.db'}"
+
+
+def engine_kwargs(database_url: str) -> dict:
+    """SQLite needs a per-connection flag that Postgres must not receive."""
+    return (
+        {"connect_args": {"check_same_thread": False}} if database_url.startswith("sqlite") else {}
+    )
 
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     """Settings pointing at a throwaway database and upload directory."""
     return Settings(
-        database_url=f"sqlite:///{tmp_path / 'test.db'}",
+        database_url=database_url_for_tests(tmp_path),
         upload_dir=str(tmp_path / "uploads"),
         jwt_secret_key="test-secret-key-of-sufficient-length",
         attorney_email=ATTORNEY_EMAIL,
@@ -46,7 +91,11 @@ def settings(tmp_path) -> Settings:
 @pytest.fixture
 def db_session(settings: Settings) -> Iterator[Session]:
     """A session on a fresh schema, created from the models rather than migrations."""
-    engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+    engine = create_engine(settings.database_url, **engine_kwargs(settings.database_url))
+    # A Postgres run shares one database across tests, so start each from a clean
+    # schema; a SQLite run gets a fresh file per test and only needs create_all.
+    if USE_POSTGRES:
+        Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     session = factory()

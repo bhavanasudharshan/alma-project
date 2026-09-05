@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models.lead import Lead, LeadState
+from app.db.models.lead import Lead, LeadEvent, LeadState
 
 
 class LeadRepository:
@@ -20,6 +20,33 @@ class LeadRepository:
         self._db.add(lead)
         self._db.flush()
         return lead
+
+    def add_event(
+        self,
+        lead_id: uuid.UUID,
+        from_state: LeadState | None,
+        to_state: LeadState,
+        actor: str,
+    ) -> LeadEvent:
+        """Append an audit row (SEC9).
+
+        Flushed but not committed: the caller commits it in the same transaction as the
+        change it describes, so the trail and the lead can never disagree.
+        """
+        event = LeadEvent(lead_id=lead_id, from_state=from_state, to_state=to_state, actor=actor)
+        self._db.add(event)
+        self._db.flush()
+        return event
+
+    def list_events(self, lead_id: uuid.UUID) -> list[LeadEvent]:
+        """Return a lead's audit trail, oldest first."""
+        return list(
+            self._db.scalars(
+                select(LeadEvent)
+                .where(LeadEvent.lead_id == lead_id)
+                .order_by(LeadEvent.created_at, LeadEvent.id)
+            )
+        )
 
     def get(self, lead_id: uuid.UUID) -> Lead | None:
         """Return the lead with ``lead_id``, or ``None``."""

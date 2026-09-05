@@ -30,7 +30,14 @@ from app.db.base import Base
 from app.db.models import Lead  # noqa: F401  (registers the table)
 from app.db.session import get_db
 from app.main import create_app
-from tests.conftest import ATTORNEY_EMAIL, ATTORNEY_PASSWORD, PDF_BYTES
+from tests.conftest import (
+    ATTORNEY_EMAIL,
+    ATTORNEY_PASSWORD,
+    PDF_BYTES,
+    USE_POSTGRES,
+    database_url_for_tests,
+    engine_kwargs,
+)
 from tests.fakes import FakeEmailService, FakeStorage
 
 PARALLEL_REQUESTS = 12
@@ -39,27 +46,32 @@ PARALLEL_REQUESTS = 12
 @pytest.fixture
 def concurrent_client(tmp_path) -> Iterator[TestClient]:
     """A client whose every request gets its own DB session, like production."""
+    database_url = database_url_for_tests(tmp_path)
     settings = Settings(
-        database_url=f"sqlite:///{tmp_path / 'concurrent.db'}",
+        database_url=database_url,
         upload_dir=str(tmp_path / "uploads"),
         jwt_secret_key="test-secret-key-of-sufficient-length",
         attorney_email=ATTORNEY_EMAIL,
         attorney_password=ATTORNEY_PASSWORD,
     )
-    engine = create_engine(
-        settings.database_url,
-        connect_args={"check_same_thread": False, "timeout": 30},
-    )
+    kwargs = engine_kwargs(database_url)
+    if database_url.startswith("sqlite"):
+        kwargs["connect_args"] = {**kwargs.get("connect_args", {}), "timeout": 30}
+    engine = create_engine(database_url, **kwargs)
 
-    # WAL + a busy timeout keep SQLite from raising "database is locked" under the
-    # thread pool; the transition guarantee itself comes from the SQL predicate.
-    @event.listens_for(engine, "connect")
-    def _pragmas(dbapi_connection, _record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
-        cursor.close()
+    if database_url.startswith("sqlite"):
+        # WAL + a busy timeout keep SQLite from raising "database is locked" under the
+        # thread pool. Postgres needs neither; the transition guarantee itself comes
+        # from the SQL predicate on both engines.
+        @event.listens_for(engine, "connect")
+        def _pragmas(dbapi_connection, _record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.close()
 
+    if USE_POSTGRES:
+        Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

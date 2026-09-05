@@ -9,8 +9,10 @@ import logging
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from app.services.exceptions import (
+    AlreadyInState,
     DomainError,
     InvalidCredentials,
     InvalidTransition,
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 STATUS_BY_ERROR: dict[type[DomainError], int] = {
     LeadNotFound: status.HTTP_404_NOT_FOUND,
     InvalidTransition: status.HTTP_409_CONFLICT,
+    AlreadyInState: status.HTTP_409_CONFLICT,
     UnsupportedResumeType: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     ResumeTooLarge: status.HTTP_413_CONTENT_TOO_LARGE,
     StorageUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -89,6 +92,20 @@ def register_exception_handlers(app: FastAPI) -> None:
         message = first.get("msg", "Invalid request.")
         detail = f"{location}: {message}" if location else message
         return _envelope(status.HTTP_422_UNPROCESSABLE_CONTENT, detail, "validation_error")
+
+    @app.exception_handler(RateLimitExceeded)
+    async def _rate_limited(_: Request, exc: RateLimitExceeded) -> JSONResponse:
+        """SEC1: 429 in the standard envelope, with Retry-After so clients can back off."""
+        # limits models a window as (multiples x granularity), e.g. 10 minutes.
+        item = exc.limit.limit
+        window = item.GRANULARITY.seconds * item.multiples
+        retry_after = str(window)
+        return _envelope(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many requests. Please wait and try again.",
+            "rate_limited",
+            {"Retry-After": retry_after},
+        )
 
     @app.exception_handler(Exception)
     async def _unhandled(_: Request, exc: Exception) -> JSONResponse:

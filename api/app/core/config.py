@@ -59,12 +59,24 @@ class Settings(BaseSettings):
     # --- uploads (S2: untrusted uploads are bounded) -------------------------
     upload_dir: str = "uploads"
     max_resume_mb: int = 5
+    # SEC2(b): legacy .doc is OLE and macro-prone, so P1 accepts pdf/docx only.
     allowed_resume_content_types: list[str] = [
         "application/pdf",
-        "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
-    allowed_resume_extensions: list[str] = [".pdf", ".doc", ".docx"]
+    allowed_resume_extensions: list[str] = [".pdf", ".docx"]
+
+    # --- rate limiting (SEC1) ------------------------------------------------
+    rate_limit_enabled: bool = True
+    # slowapi syntax: "<count>/<period>".
+    rate_limit_leads: str = "5/10minutes"
+    rate_limit_login: str = "10/5minutes"
+    # In-memory today; point at redis://... to share limits across replicas.
+    rate_limit_storage_url: str = "memory://"
+
+    # --- observability (M5) --------------------------------------------------
+    log_json: bool = False
+    request_id_header: str = "X-Request-ID"
 
     # --- email (P0 console; Resend selected in P1 when the key is set) -------
     # Unset RESEND_API_KEY => ConsoleEmailService.
@@ -90,6 +102,16 @@ class Settings(BaseSettings):
         """Absolute upload root, anchored to the repo so cwd does not matter."""
         configured = Path(self.upload_dir)
         return configured if configured.is_absolute() else REPO_ROOT / configured
+
+    @property
+    def uses_s3(self) -> bool:
+        """Whether object storage is configured (M4: selection is config, not code)."""
+        return bool(self.s3_endpoint_url or self.s3_access_key_id)
+
+    @property
+    def uses_resend(self) -> bool:
+        """Whether a real email provider is configured."""
+        return bool(self.resend_api_key)
 
     def insecure_defaults(self) -> list[str]:
         """Names of placeholder credentials still in use outside local development."""

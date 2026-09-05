@@ -1,8 +1,15 @@
-# Optional infrastructure. Nothing here is wired into the app at Stage 0 --
-# the default local run is SQLite + local disk + console email, with no Docker ($1).
+# Optional infrastructure. The default local run needs none of it: SQLite + local
+# disk + console email, no Docker ($1). Each profile is opt-in, and the app switches
+# purely on environment variables -- no code change (M4/E2).
 #
 #   docker compose --profile pg up -d      # Postgres 16
+#     then: DATABASE_URL=postgresql+psycopg://alma:alma@localhost:5432/alma
+#
 #   docker compose --profile s3 up -d      # MinIO + bucket bootstrap
+#     then: S3_ENDPOINT_URL=http://localhost:9000
+#           S3_ACCESS_KEY_ID=minioadmin
+#           S3_SECRET_ACCESS_KEY=minioadmin
+#           S3_BUCKET=alma-resumes
 
 services:
   postgres:

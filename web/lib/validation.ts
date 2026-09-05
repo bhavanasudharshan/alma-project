@@ -8,12 +8,12 @@
 
 import { z } from "zod";
 
-export const ALLOWED_RESUME_EXTENSIONS = [".pdf", ".doc", ".docx"] as const;
+// SEC2(b): legacy .doc is OLE and macro-prone, dropped in P1 to match the API.
+export const ALLOWED_RESUME_EXTENSIONS = [".pdf", ".docx"] as const;
 export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
 
 const ALLOWED_RESUME_TYPES = [
   "application/pdf",
-  "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
@@ -35,7 +35,7 @@ function checkResume<T extends z.ZodType<File>>(schema: T) {
       (file) =>
         ALLOWED_RESUME_TYPES.includes(file.type) ||
         ALLOWED_RESUME_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext)),
-      "Upload a PDF, DOC or DOCX file",
+      "Upload a PDF or DOCX file",
     );
 }
 

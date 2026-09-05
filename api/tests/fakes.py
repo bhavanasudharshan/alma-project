@@ -28,6 +28,10 @@ class FakeStorage:
         self.saved.pop(key, None)
         self.content_types.pop(key, None)
 
+    def presigned_url(self, key: str, expires: int = 300) -> str | None:
+        """The fake behaves like local disk: no direct URL."""
+        return None
+
 
 class FailingStorage:
     """Storage adapter that always fails, for the degrade-gracefully path (A1)."""
@@ -41,6 +45,9 @@ class FailingStorage:
     def delete(self, key: str) -> None:
         return None
 
+    def presigned_url(self, key: str, expires: int = 300) -> str | None:
+        return None
+
 
 class FakeEmailService:
     """:class:`EmailService` that records messages instead of sending them."""
@@ -48,8 +55,17 @@ class FakeEmailService:
     def __init__(self) -> None:
         self.sent: list[dict[str, str | None]] = []
 
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> None:
-        self.sent.append({"to": to, "subject": subject, "text": text, "html": html})
+    def send(
+        self,
+        to: str,
+        subject: str,
+        text: str,
+        html: str | None = None,
+        lead_id: str | None = None,
+    ) -> None:
+        self.sent.append(
+            {"to": to, "subject": subject, "text": text, "html": html, "lead_id": lead_id}
+        )
 
     @property
     def recipients(self) -> list[str]:

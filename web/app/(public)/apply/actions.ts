@@ -62,6 +62,8 @@ export async function submitApplication(
   }
 
   const payload = new FormData();
+  // SEC4: forwarded untouched so the API decides; the client never judges a bot.
+  payload.set("website", String(formData.get("website") ?? ""));
   payload.set("first_name", parsed.data.first_name);
   payload.set("last_name", parsed.data.last_name);
   payload.set("email", parsed.data.email);

@@ -13,4 +13,6 @@ def test_health_returns_ok() -> None:
     response = client.get(f"{get_settings().api_v1_prefix}/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    # P1: the probe also proves the database answers, so it cannot be green while
+    # every real request fails (M5).
+    assert response.json() == {"status": "ok", "database": "ok"}
