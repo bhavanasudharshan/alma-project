@@ -4,9 +4,11 @@
 API_DIR := api
 WEB_DIR := web
 
-.PHONY: help dev api web test e2e lint fmt migrate seed install
+.PHONY: help setup doctor dev api web test e2e lint fmt migrate seed install export-reqs verify-clone
 
 help:
+	@echo "make setup    - one-command bootstrap for a fresh clone"
+	@echo "make doctor   - diagnose tools, config, database and chosen adapters"
 	@echo "make install  - install api + web dependencies"
 	@echo "make dev      - run api and web together"
 	@echo "make api      - run the FastAPI server on :8000"
@@ -16,7 +18,15 @@ help:
 	@echo "make fmt      - ruff format + ruff check --fix"
 	@echo "make migrate  - alembic upgrade head"
 	@echo "make e2e      - playwright browser smoke test (boots both servers)"
-	@echo "make seed     - seed local data (stub until P0)"
+	@echo "make seed     - load 4 demo leads across PENDING/REACHED_OUT/QUALIFIED"
+	@echo "make export-reqs  - regenerate api/requirements.txt from uv.lock"
+	@echo "make verify-clone - clone into a temp dir and prove setup works hands-free"
+
+setup:
+	./scripts/setup.sh
+
+doctor:
+	@cd $(API_DIR) && uv run python ../scripts/doctor.py
 
 install:
 	cd $(API_DIR) && uv sync
@@ -29,11 +39,13 @@ web:
 	cd $(WEB_DIR) && pnpm dev
 
 # Runs both servers; Ctrl-C stops the pair.
+# Kills only its own two children: `kill 0` would signal the whole process group,
+# which takes down whatever invoked make (scripts/verify-clone.sh found this).
 dev:
-	@trap 'kill 0' INT TERM; \
-	$(MAKE) api & \
-	$(MAKE) web & \
-	wait
+	@$(MAKE) api & api_pid=$$!; \
+	$(MAKE) web & web_pid=$$!; \
+	trap 'kill $$api_pid $$web_pid 2>/dev/null' INT TERM EXIT; \
+	wait $$api_pid $$web_pid
 
 test:
 	cd $(API_DIR) && uv run pytest -q
@@ -63,6 +75,17 @@ fmt:
 migrate:
 	cd $(API_DIR) && uv run alembic upgrade head
 
-# Stage 0 stub: there is no data to seed until the Lead model lands in P0.
+# Refuses to run outside ENVIRONMENT=local; safe to run repeatedly.
 seed:
-	@echo "seed: nothing to do at Stage 0 (no models yet); implemented in P0"
+	@cd $(API_DIR) && uv run python ../scripts/seed.py
+
+# api/requirements.txt exists only for reviewers who prefer pip; uv.lock is the
+# source of truth, and CI fails if the export drifts.
+export-reqs:
+	@cd $(API_DIR) && printf '%s\n' "# GENERATED from uv.lock by make export-reqs — do not edit" > requirements.txt
+	@cd $(API_DIR) && uv export --format requirements-txt --no-dev --no-hashes --no-emit-project >> requirements.txt
+	@echo "wrote api/requirements.txt"
+
+# The proof that a fresh clone works hands-free. Repeatable on any machine.
+verify-clone:
+	./scripts/verify-clone.sh $(ARGS)

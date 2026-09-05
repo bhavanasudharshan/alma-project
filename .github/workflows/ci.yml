@@ -37,6 +37,16 @@ jobs:
       - name: Test (SQLite — the zero-infra default)
         run: uv run pytest -q
 
+      # requirements.txt is a convenience for reviewers who prefer pip; uv.lock is the
+      # source of truth. Fail if the two have drifted rather than let pip users install
+      # a different dependency set from the one that was tested.
+      - name: Verify api/requirements.txt is up to date
+        run: |
+          { printf '%s\n' "# GENERATED from uv.lock by make export-reqs — do not edit"
+            uv export --format requirements-txt --no-dev --no-hashes --no-emit-project
+          } | diff -u - requirements.txt \
+            || { echo "::error::api/requirements.txt is stale — run: make export-reqs"; exit 1; }
+
   api-postgres:
     name: api (postgres)
     runs-on: ubuntu-latest
