@@ -4,7 +4,7 @@
 API_DIR := api
 WEB_DIR := web
 
-.PHONY: help dev api web test lint fmt migrate seed install
+.PHONY: help dev api web test e2e lint fmt migrate seed install
 
 help:
 	@echo "make install  - install api + web dependencies"
@@ -15,6 +15,7 @@ help:
 	@echo "make lint     - ruff check + ruff format --check + pnpm lint + tsc --noEmit"
 	@echo "make fmt      - ruff format + ruff check --fix"
 	@echo "make migrate  - alembic upgrade head"
+	@echo "make e2e      - playwright browser smoke test (boots both servers)"
 	@echo "make seed     - seed local data (stub until P0)"
 
 install:
@@ -36,6 +37,18 @@ dev:
 
 test:
 	cd $(API_DIR) && uv run pytest -q
+
+# Boots the API and the web app itself, so this works from a cold start.
+# Runs against a throwaway database that is deleted first, so a smoke run never
+# touches the developer's data and never depends on what is already in it.
+E2E_DB_FILE := data/e2e.db
+E2E_DATABASE_URL := sqlite:///./$(E2E_DB_FILE)
+
+e2e:
+	rm -f $(E2E_DB_FILE)
+	mkdir -p data
+	cd $(API_DIR) && DATABASE_URL=$(E2E_DATABASE_URL) uv run alembic upgrade head
+	cd $(WEB_DIR) && E2E_DATABASE_URL=$(E2E_DATABASE_URL) pnpm exec playwright test
 
 lint:
 	cd $(API_DIR) && uv run ruff check .

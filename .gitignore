@@ -28,9 +28,16 @@ docs/agent/sessions/*.raw.md
 # --- Runtime data (SQLite database, uploaded resumes) ---
 data/
 uploads/
+# (data/e2e.db is the throwaway database used by `make e2e`)
 
 # --- Local test fixtures used for manual E2E, never part of the repo ---
 sample_test_data/
+
+# --- Playwright output ---
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/.playwright/
 
 # --- OS / editor ---
 .DS_Store
