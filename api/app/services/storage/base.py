@@ -20,3 +20,12 @@ class FileStorage(Protocol):
     def delete(self, key: str) -> None:
         """Remove ``key``. Deleting a missing key is not an error."""
         ...
+
+    def presigned_url(self, key: str, expires: int = 300) -> str | None:
+        """A time-limited direct download URL, or ``None`` if unsupported.
+
+        Local disk has no such concept and returns ``None``; callers must always keep
+        the authenticated proxy route working, since it is the only path that exists
+        for every backend (S1/C1).
+        """
+        ...

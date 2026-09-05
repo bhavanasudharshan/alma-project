@@ -71,3 +71,7 @@ class LocalDiskStorage:
     def delete(self, key: str) -> None:
         """Delete the stored object, ignoring an already-absent key."""
         self._resolve(key).unlink(missing_ok=True)
+
+    def presigned_url(self, key: str, expires: int = 300) -> str | None:
+        """Always ``None``: a path on this host is not reachable by a browser."""
+        return None
