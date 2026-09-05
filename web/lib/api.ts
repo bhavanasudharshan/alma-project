@@ -1,24 +1,48 @@
 /**
- * Typed fetch wrapper for the FastAPI backend.
+ * Typed client for the FastAPI backend.
  *
- * Stage 0: transport only -- no endpoints are modelled yet. Server components pass a
- * bearer token explicitly (P0); the token is never read from client-side JS (S1).
+ * Every call here runs on the server (route handlers, server components, server
+ * actions). The bearer token is passed in explicitly by the caller, which reads it
+ * from the httpOnly cookie -- it is never bundled into client JavaScript (S1).
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-/** Error envelope the API returns for every failure: `{ detail, code }` (M6). */
-export type ApiErrorBody = {
-  detail: string;
-  code?: string;
+/** Lead lifecycle states, mirroring `LeadState` in the API. */
+export const LEAD_STATES = ["PENDING", "REACHED_OUT"] as const;
+export type LeadState = (typeof LEAD_STATES)[number];
+
+/** A lead as returned by the API. The storage key is deliberately not exposed. */
+export type Lead = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  resume_filename: string;
+  resume_content_type: string;
+  state: LeadState;
+  created_at: string;
+  updated_at: string;
 };
 
-/** Thrown for any non-2xx response so callers branch on status, not on parsing. */
+export type LeadPage = {
+  items: Lead[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type TokenResponse = { access_token: string; token_type: string };
+
+/** The error envelope every non-2xx response uses: `{ detail, code }`. */
+export type ApiErrorBody = { detail: string; code?: string };
+
+/** Thrown for any non-2xx response so callers branch on `status`/`code`, not parsing. */
 export class ApiError extends Error {
   readonly status: number;
-  readonly code?: string;
+  readonly code: string;
 
-  constructor(status: number, detail: string, code?: string) {
+  constructor(status: number, detail: string, code = "http_error") {
     super(detail);
     this.name = "ApiError";
     this.status = status;
@@ -26,47 +50,82 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiFetchOptions = Omit<RequestInit, "body"> & {
-  /** Bearer token, forwarded server-side only. */
+type FetchOptions = {
+  method?: string;
   token?: string;
-  /** JSON-serialisable body, or a FormData for multipart uploads. */
-  body?: unknown;
+  json?: unknown;
+  form?: FormData;
+  /** Opt out of Next's fetch cache for data that must be fresh. */
+  cache?: RequestCache;
 };
 
-/**
- * Call `path` (e.g. `/api/v1/health`) on the API and parse the JSON response.
- *
- * @throws {ApiError} when the response status is not 2xx.
- */
-export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const { token, body, headers, ...rest } = options;
+async function request(path: string, options: FetchOptions = {}): Promise<Response> {
+  const { method = "GET", token, json, form, cache = "no-store" } = options;
+  const headers = new Headers();
 
-  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
-  const requestHeaders = new Headers(headers);
-
-  if (token) {
-    requestHeaders.set("Authorization", `Bearer ${token}`);
-  }
-  if (body !== undefined && !isFormData) {
-    requestHeaders.set("Content-Type", "application/json");
-  }
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (json !== undefined) headers.set("Content-Type", "application/json");
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    headers: requestHeaders,
-    body: isFormData ? (body as FormData) : body !== undefined ? JSON.stringify(body) : undefined,
+    method,
+    headers,
+    body: form ?? (json !== undefined ? JSON.stringify(json) : undefined),
+    cache,
   });
 
   if (!response.ok) {
-    const fallback = `Request to ${path} failed with ${response.status}`;
     const problem = (await response.json().catch(() => null)) as ApiErrorBody | null;
-    throw new ApiError(response.status, problem?.detail ?? fallback, problem?.code);
+    throw new ApiError(
+      response.status,
+      problem?.detail ?? `Request to ${path} failed with ${response.status}`,
+      problem?.code,
+    );
   }
+  return response;
+}
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+async function requestJson<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  const response = await request(path, options);
   return (await response.json()) as T;
+}
+
+/** Submit a lead from the public form (FR1). Multipart, no auth. */
+export function createLead(form: FormData): Promise<Lead> {
+  return requestJson<Lead>("/api/v1/leads", { method: "POST", form });
+}
+
+/** Exchange attorney credentials for a bearer token (FR4). */
+export function login(email: string, password: string): Promise<TokenResponse> {
+  return requestJson<TokenResponse>("/api/v1/auth/login", {
+    method: "POST",
+    json: { email, password },
+  });
+}
+
+/** One page of the attorney queue, newest first (FR5). */
+export function listLeads(
+  token: string,
+  params: { state?: LeadState; limit?: number; offset?: number } = {},
+): Promise<LeadPage> {
+  const query = new URLSearchParams();
+  if (params.state) query.set("state", params.state);
+  query.set("limit", String(params.limit ?? 20));
+  query.set("offset", String(params.offset ?? 0));
+  return requestJson<LeadPage>(`/api/v1/leads?${query}`, { token });
+}
+
+/** Move a lead through the pipeline (FR8). Throws ApiError 409 on an illegal move. */
+export function updateLeadState(token: string, id: string, state: LeadState): Promise<Lead> {
+  return requestJson<Lead>(`/api/v1/leads/${id}/state`, {
+    method: "PATCH",
+    token,
+    json: { state },
+  });
+}
+
+/** The raw resume response, for a route handler to proxy back to the browser (FR6). */
+export function fetchResume(token: string, id: string): Promise<Response> {
+  return request(`/api/v1/leads/${id}/resume`, { token });
 }
 
 export { API_BASE_URL };
