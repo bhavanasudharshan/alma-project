@@ -31,8 +31,8 @@ export function StateActionButton({
 
   const tone =
     result?.status === "error"
-      ? "text-red-600 dark:text-red-400"
-      : "text-gray-600 dark:text-gray-400";
+      ? "text-red-700"
+      : "text-muted";
 
   return (
     <div className="flex flex-col items-start gap-1">
@@ -44,9 +44,8 @@ export function StateActionButton({
             setResult(await changeLeadState(leadId, target));
           })
         }
-        className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium
-                   hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60
-                   dark:border-gray-700 dark:hover:bg-gray-900"
+        className="rounded-md border border-brand bg-surface px-2.5 py-1.5 text-xs font-semibold text-brand
+                   hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? pendingLabel : label}
       </button>

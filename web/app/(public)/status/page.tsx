@@ -12,10 +12,11 @@ export default function StatusPage() {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Check your status</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Enter the tracking code from your confirmation email. We will show where your
-          submission is — nothing else is shown here, and no sign-in is needed.
+        <h1 className="text-[32px] leading-tight font-semibold tracking-[-0.5px]">
+          Check your status
+        </h1>
+        <p className="text-sm text-muted">
+          Enter the tracking code from your confirmation email.
         </p>
       </header>
       <StatusForm />

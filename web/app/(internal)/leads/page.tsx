@@ -59,13 +59,13 @@ export default async function LeadsPage({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Prospects who submitted the public form, newest first.
+        <h1 className="text-[32px] leading-tight font-semibold tracking-[-0.5px]">Leads</h1>
+        <p className="text-sm text-muted">
+          Newest first. Mark a lead after you have reached out.
         </p>
       </header>
 
-      <nav aria-label="Filter by state" className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
+      <nav aria-label="Filter by state" className="flex gap-1 border-b border-line">
         {TABS.map((tab) => {
           const active = tab.state === state;
           return (
@@ -75,8 +75,8 @@ export default async function LeadsPage({
               aria-current={active ? "page" : undefined}
               className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
                 active
-                  ? "border-gray-900 text-gray-900 dark:border-white dark:text-white"
-                  : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+                  ? "border-brand text-brand"
+                  : "border-transparent text-muted hover:text-ink"
               }`}
             >
               {tab.label}
@@ -86,11 +86,11 @@ export default async function LeadsPage({
       </nav>
 
       {isEmptyPage ? (
-        <div className="rounded-md border border-dashed border-gray-300 px-6 py-12 text-center dark:border-gray-700">
+        <div className="rounded-lg border border-dashed border-line bg-surface px-6 py-12 text-center">
           <p className="text-sm font-medium">
             {isPastEnd ? "Nothing on this page" : "No leads here yet"}
           </p>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-1 text-sm text-muted">
             {isPastEnd
               ? `There ${page.total === 1 ? "is" : "are"} ${page.total} lead${page.total === 1 ? "" : "s"} in this view.`
               : state === "REACHED_OUT"
@@ -107,9 +107,9 @@ export default async function LeadsPage({
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-800">
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="w-full min-w-[52rem] text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+            <thead className="border-b border-line bg-surface-sunken text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th scope="col" className="px-4 py-3 font-medium">Name</th>
                 <th scope="col" className="px-4 py-3 font-medium">Email</th>
@@ -119,18 +119,18 @@ export default async function LeadsPage({
                 <th scope="col" className="px-4 py-3 font-medium">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+            <tbody className="divide-y divide-line">
               {page.items.map((lead) => (
                 <tr key={lead.id} className="align-top">
                   <td className="px-4 py-3 font-medium">
                     {lead.first_name} {lead.last_name}
                   </td>
                   <td className="px-4 py-3">
-                    <a href={`mailto:${lead.email}`} className="underline underline-offset-2">
+                    <a href={`mailto:${lead.email}`} className="text-brand hover:text-brand-hover">
                       {lead.email}
                     </a>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                  <td className="px-4 py-3 text-muted">
                     <span>{relativeTime(lead.created_at)}</span>
                     <br />
                     <span className="text-xs">{absoluteTime(lead.created_at)}</span>
@@ -141,7 +141,7 @@ export default async function LeadsPage({
                   <td className="px-4 py-3">
                     <a
                       href={`/api/leads/${lead.id}/resume`}
-                      className="underline underline-offset-2"
+                      className="text-brand hover:text-brand-hover"
                       title={lead.resume_filename}
                     >
                       Download
@@ -151,7 +151,7 @@ export default async function LeadsPage({
                     {NEXT_ACTION[lead.state] ? (
                       <StateActionButton leadId={lead.id} {...NEXT_ACTION[lead.state]!} />
                     ) : (
-                      <span className="text-xs text-gray-500">—</span>
+                      <span className="text-xs text-muted">—</span>
                     )}
                   </td>
                 </tr>
@@ -163,7 +163,7 @@ export default async function LeadsPage({
 
       {!isEmptyPage && (
         <div className="flex items-center justify-between gap-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-muted">
             Showing {from}–{to} of {page.total}
           </p>
           <div className="flex gap-2">
@@ -202,7 +202,7 @@ function PageLink({
     return (
       <span
         aria-disabled="true"
-        className={`${classes} border-gray-200 text-gray-400 dark:border-gray-800 dark:text-gray-600`}
+        className={`${classes} border-line text-muted opacity-50`}
       >
         {label}
       </span>
@@ -214,7 +214,7 @@ function PageLink({
   return (
     <Link
       href={`/leads${query.toString() ? `?${query}` : ""}`}
-      className={`${classes} border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900`}
+      className={`${classes} border-line bg-surface hover:bg-surface-sunken`}
     >
       {label}
     </Link>

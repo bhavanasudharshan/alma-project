@@ -18,8 +18,8 @@ export function LogoutButton() {
         router.push("/login");
         router.refresh();
       }}
-      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium
-                 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-900"
+      className="rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium
+                 hover:bg-surface-sunken disabled:opacity-60"
     >
       {pending ? "Signing out…" : "Log out"}
     </button>

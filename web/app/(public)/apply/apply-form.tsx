@@ -15,13 +15,15 @@ import {
 import { submitApplication, type ApplyState } from "./actions";
 
 const INPUT =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm " +
-  "focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900 " +
-  "dark:border-gray-700 dark:bg-gray-950 dark:focus:border-gray-100 dark:focus:ring-gray-100";
+  "w-full rounded-md border border-line bg-surface px-3 py-2.5 text-sm text-ink " +
+  "placeholder:text-muted focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand";
+
+const LABEL = "text-sm font-medium text-ink";
 
 export function ApplyForm() {
   // Server-returned errors (the API rejected something the client could not know).
   const [serverState, setServerState] = useState<ApplyState>({});
+  const [fileName, setFileName] = useState<string | null>(null);
 
   const {
     register,
@@ -31,6 +33,8 @@ export function ApplyForm() {
   } = useForm<LeadClientInput, unknown, LeadClientOutput>({
     resolver: zodResolver(leadClientSchema),
   });
+
+  const resumeField = register("resume");
 
   const onSubmit = handleSubmit(async (values, event) => {
     const payload = new FormData();
@@ -51,64 +55,74 @@ export function ApplyForm() {
     errors[field]?.message ?? serverState.fieldErrors?.[field];
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col gap-6 rounded-lg border border-line bg-surface p-6 sm:p-8"
+    >
       {serverState.formError && (
         <p
           role="alert"
-          className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800
-                     dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {serverState.formError}
         </p>
       )}
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="first_name" className="text-sm font-medium">
-            First name
-          </label>
-          <input
-            id="first_name"
-            autoComplete="given-name"
-            aria-invalid={Boolean(fieldError("first_name"))}
-            aria-describedby={fieldError("first_name") ? "first_name-error" : undefined}
-            className={INPUT}
-            {...register("first_name")}
-          />
-          <FieldError id="first_name-error" message={fieldError("first_name")} />
+      <fieldset className="flex flex-col gap-5">
+        <legend className="mb-1 text-sm font-semibold text-ink">About you</legend>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="first_name" className={LABEL}>
+              First name <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="first_name"
+              autoComplete="given-name"
+              aria-invalid={Boolean(fieldError("first_name"))}
+              aria-describedby={fieldError("first_name") ? "first_name-error" : undefined}
+              className={INPUT}
+              {...register("first_name")}
+            />
+            <FieldError id="first_name-error" message={fieldError("first_name")} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="last_name" className={LABEL}>
+              Last name <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="last_name"
+              autoComplete="family-name"
+              aria-invalid={Boolean(fieldError("last_name"))}
+              aria-describedby={fieldError("last_name") ? "last_name-error" : undefined}
+              className={INPUT}
+              {...register("last_name")}
+            />
+            <FieldError id="last_name-error" message={fieldError("last_name")} />
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="last_name" className="text-sm font-medium">
-            Last name
+          <label htmlFor="email" className={LABEL}>
+            Email <span aria-hidden="true">*</span>
           </label>
           <input
-            id="last_name"
-            autoComplete="family-name"
-            aria-invalid={Boolean(fieldError("last_name"))}
-            aria-describedby={fieldError("last_name") ? "last_name-error" : undefined}
+            id="email"
+            type="email"
+            autoComplete="email"
+            aria-invalid={Boolean(fieldError("email"))}
+            aria-describedby={fieldError("email") ? "email-error" : "email-hint"}
             className={INPUT}
-            {...register("last_name")}
+            {...register("email")}
           />
-          <FieldError id="last_name-error" message={fieldError("last_name")} />
+          <p id="email-hint" className="text-[13px] text-muted">
+            We&apos;ll send your confirmation and tracking code here.
+          </p>
+          <FieldError id="email-error" message={fieldError("email")} />
         </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="email" className="text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          aria-invalid={Boolean(fieldError("email"))}
-          aria-describedby={fieldError("email") ? "email-error" : undefined}
-          className={INPUT}
-          {...register("email")}
-        />
-        <FieldError id="email-error" message={fieldError("email")} />
-      </div>
+      </fieldset>
 
       {/*
         SEC4 honeypot. Hidden from sighted users and from screen readers, and skipped
@@ -120,34 +134,47 @@ export function ApplyForm() {
         <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="resume" className="text-sm font-medium">
-          CV or resume
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-sm font-semibold text-ink">Your résumé</legend>
+
+        <label htmlFor="resume" className={LABEL}>
+          Résumé <span aria-hidden="true">*</span>
         </label>
+
+        {/* Styling only: still a plain file input underneath, no drag-and-drop script. */}
+        <label
+          htmlFor="resume"
+          className="flex cursor-pointer flex-col items-center gap-1.5 rounded-md border border-dashed border-line bg-surface-sunken px-4 py-8 text-center hover:border-brand"
+        >
+          <span className="text-sm font-medium text-brand">
+            {fileName ?? "Choose a file"}
+          </span>
+          <span id="resume-hint" className="text-[13px] text-muted">
+            PDF or DOCX, up to 5 MB
+          </span>
+        </label>
+
         <input
           id="resume"
           type="file"
           accept={ALLOWED_RESUME_EXTENSIONS.join(",")}
           aria-invalid={Boolean(fieldError("resume"))}
           aria-describedby={fieldError("resume") ? "resume-error" : "resume-hint"}
-          className="w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-gray-900
-                     file:px-3 file:py-2 file:text-sm file:font-medium file:text-white
-                     hover:file:bg-gray-700 dark:file:bg-white dark:file:text-gray-900"
-          {...register("resume")}
+          className="sr-only"
+          {...resumeField}
+          onChange={(event) => {
+            resumeField.onChange(event);
+            setFileName(event.target.files?.[0]?.name ?? null);
+          }}
         />
-        <p id="resume-hint" className="text-xs text-gray-600 dark:text-gray-400">
-          PDF or DOCX, up to 5 MB.
-        </p>
         <FieldError id="resume-error" message={fieldError("resume")} />
-      </div>
+      </fieldset>
 
       <div>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white
-                     hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60
-                     dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+          className="rounded-md bg-brand px-[22px] py-3 text-[15px] font-semibold text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? "Submitting…" : "Submit application"}
         </button>

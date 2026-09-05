@@ -27,15 +27,17 @@ test("a lead can apply, and an attorney can find and progress them", async ({ pa
     await page.getByLabel("First name").fill(applicant.firstName);
     await page.getByLabel("Last name").fill(applicant.lastName);
     await page.getByLabel("Email").fill(applicant.email);
-    await page.getByLabel("CV or resume").setInputFiles(RESUME);
+    // The file input is visually hidden behind a styled label (design pass), and two
+    // labels point at it, so target the control by id rather than by accessible name.
+    await page.locator("input#resume").setInputFiles(RESUME);
     await page.getByRole("button", { name: "Submit application" }).click();
 
     await expect(page).toHaveURL(/\/thank-you$/);
-    await expect(page.getByRole("heading", { name: /Thank you/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /we've received your application/i })).toBeVisible();
   });
 
   await test.step("the thank-you page offers the status portal", async () => {
-    await page.getByRole("link", { name: /Check your status/i }).click();
+    await page.getByRole("link", { name: "Check status" }).click();
     await expect(page).toHaveURL(/\/status$/);
     await expect(page.getByLabel("Tracking code")).toBeVisible();
   });

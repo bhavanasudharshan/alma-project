@@ -9,9 +9,8 @@ import { FieldError } from "@/components/field-error";
 import { loginSchema, type LoginValues } from "@/lib/validation";
 
 const INPUT =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm " +
-  "focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900 " +
-  "dark:border-gray-700 dark:bg-gray-950 dark:focus:border-gray-100 dark:focus:ring-gray-100";
+  "w-full rounded-md border border-line bg-surface px-3 py-2.5 text-sm text-ink " +
+  "focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand";
 
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
@@ -48,15 +47,14 @@ export function LoginForm({ next }: { next: string }) {
       {formError && (
         <p
           role="alert"
-          className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800
-                     dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {formError}
         </p>
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="email" className="text-sm font-medium">
+        <label htmlFor="email" className="text-sm font-medium text-ink">
           Email
         </label>
         <input
@@ -72,7 +70,7 @@ export function LoginForm({ next }: { next: string }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="password" className="text-sm font-medium">
+        <label htmlFor="password" className="text-sm font-medium text-ink">
           Password
         </label>
         <input
@@ -90,9 +88,8 @@ export function LoginForm({ next }: { next: string }) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white
-                   hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60
-                   dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+        className="rounded-md bg-brand px-[22px] py-3 text-[15px] font-semibold text-white
+                   hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSubmitting ? "Signing in…" : "Sign in"}
       </button>

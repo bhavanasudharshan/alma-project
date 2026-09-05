@@ -11,13 +11,13 @@ export default async function LeadsLayout({ children }: { children: React.ReactN
   const attorney = readSubjectUnverified(token);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-gray-200 dark:border-gray-800">
+    <div className="flex min-h-screen flex-col bg-surface-sunken">
+      <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <span className="text-lg font-semibold tracking-tight">alma</span>
+          <span className="text-[22px] font-bold tracking-[-0.5px] text-brand">alma</span>
           <div className="flex items-center gap-4">
             {attorney && (
-              <span className="hidden text-sm text-gray-600 sm:inline dark:text-gray-400">
+              <span className="hidden text-sm text-muted sm:inline">
                 {attorney}
               </span>
             )}

@@ -1,25 +1,52 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens (docs/UI_CONCEPTS.md).
+ *
+ * One accent, one typeface, three type sizes. The palette is committed to light: the
+ * brief it will be reviewed beside is white with a deep-green wordmark, so a dark
+ * default read as unfinished rather than as a choice.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand: #1f4d2b;
+  --brand-hover: #163a20;
+  --brand-soft: #e8f1ea;
+  --ink: #111827;
+  --muted: #6b7280;
+  --surface: #ffffff;
+  --surface-sunken: #f9fafb;
+  --line: #e5e7eb;
+
+  /* Lead states. Semantics unchanged; these are just the badge colours. */
+  --state-pending: #b45309;
+  --state-pending-bg: #fef3c7;
+  --state-reached-out: #166534;
+  --state-reached-out-bg: #dcfce7;
+  --state-qualified: #1d4ed8;
+  --state-qualified-bg: #dbeafe;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line: var(--line);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, ui-sans-serif,
+    Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One visible focus treatment everywhere, in the accent colour. */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }

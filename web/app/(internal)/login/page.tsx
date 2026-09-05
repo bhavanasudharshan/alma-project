@@ -17,11 +17,9 @@ export default async function LoginPage({
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-8 px-6 py-12">
       <header className="flex flex-col gap-2">
-        <span className="text-lg font-semibold tracking-tight">alma</span>
-        <h1 className="text-2xl font-semibold tracking-tight">Attorney sign in</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Access the lead intake queue.
-        </p>
+        <span className="text-[22px] font-bold tracking-[-0.5px] text-brand">alma</span>
+        <h1 className="text-[32px] leading-tight font-semibold tracking-[-0.5px]">Attorney sign in</h1>
+        <p className="text-sm text-muted">Access the lead intake queue.</p>
       </header>
       <LoginForm next={target} />
     </div>
