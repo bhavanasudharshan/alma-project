@@ -10,7 +10,7 @@ FastAPI (`api/`) and Next.js 15 (`web/`) in one repo.
 ## Quickstart
 
 ```bash
-git clone <repository-url> && cd alma
+git clone <repository-url> && cd alma-project
 make setup
 make dev
 ```
