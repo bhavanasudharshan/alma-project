@@ -63,13 +63,15 @@ export async function submitApplication(
 
   const payload = new FormData();
   // SEC4: forwarded untouched so the API decides; the client never judges a bot.
-  payload.set("website", String(formData.get("website") ?? ""));
+  payload.set("contact_ref_2", String(formData.get("contact_ref_2") ?? ""));
   payload.set("first_name", parsed.data.first_name);
   payload.set("last_name", parsed.data.last_name);
   payload.set("email", parsed.data.email);
   payload.set("resume", parsed.data.resume);
 
   try {
+    // A 202 (honeypot tripped) resolves to null rather than throwing: the applicant
+    // sees the same confirmation as everyone else, which is the point.
     await createLead(payload);
   } catch (error) {
     if (error instanceof ApiError) return toState(error);

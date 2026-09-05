@@ -98,12 +98,30 @@ async function request(path: string, options: FetchOptions = {}): Promise<Respon
 
 async function requestJson<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const response = await request(path, options);
-  return (await response.json()) as T;
+
+  // A 202 or 204 carries no body, and the honeypot path deliberately returns 202 with
+  // nothing in it. Calling .json() on that throws "Unexpected end of JSON input", which
+  // surfaced to a real applicant as a generic failure — see NOTES.md #17.
+  if (response.status === 204 || response.status === 202) {
+    return null as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return null as T;
+  }
+  return JSON.parse(text) as T;
 }
 
-/** Submit a lead from the public form (FR1). Multipart, no auth. */
-export function createLead(form: FormData): Promise<Lead> {
-  return requestJson<Lead>("/api/v1/leads", { method: "POST", form });
+/**
+ * Submit a lead from the public form (FR1). Multipart, no auth.
+ *
+ * Resolves to `null` when the API answers 202 — the honeypot was tripped and the
+ * submission was silently discarded. Callers must treat that as success: telling a
+ * suspected bot it was detected is the one thing a honeypot must never do.
+ */
+export function createLead(form: FormData): Promise<Lead | null> {
+  return requestJson<Lead | null>("/api/v1/leads", { method: "POST", form });
 }
 
 /** Exchange attorney credentials for a bearer token (FR4). */

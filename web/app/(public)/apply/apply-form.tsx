@@ -39,8 +39,8 @@ export function ApplyForm() {
   const onSubmit = handleSubmit(async (values, event) => {
     const payload = new FormData();
     // Not registered with react-hook-form: read it straight off the form element.
-    const honeypot = new FormData(event?.target as HTMLFormElement).get("website");
-    payload.set("website", typeof honeypot === "string" ? honeypot : "");
+    const honeypot = new FormData(event?.target as HTMLFormElement).get("contact_ref_2");
+    payload.set("contact_ref_2", typeof honeypot === "string" ? honeypot : "");
     payload.set("first_name", values.first_name);
     payload.set("last_name", values.last_name);
     payload.set("email", values.email);
@@ -125,13 +125,24 @@ export function ApplyForm() {
       </fieldset>
 
       {/*
-        SEC4 honeypot. Hidden from sighted users and from screen readers, and skipped
-        by keyboard navigation, so a real applicant can never fill it in. Bots that
-        auto-complete every field will, and the API silently drops those.
+        SEC4 honeypot. Hidden from sighted users and from screen readers, and skipped by
+        keyboard navigation, so a real applicant can never fill it in deliberately.
+
+        The odd name is load-bearing: this field was called "website", and Chrome's
+        address autofill filled it for anyone with a saved profile — autocomplete="off"
+        is advisory and Chrome ignores it — so real applications were silently dropped.
+        A name no autofill heuristic recognises, plus autocomplete="one-time-code"
+        (which browsers never autofill), is what actually keeps it empty.
       */}
       <div aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 overflow-hidden">
-        <label htmlFor="website">Website (leave blank)</label>
-        <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
+        <label htmlFor="contact_ref_2">Do not fill this in</label>
+        <input
+          id="contact_ref_2"
+          name="contact_ref_2"
+          type="text"
+          tabIndex={-1}
+          autoComplete="one-time-code"
+        />
       </div>
 
       <fieldset className="flex flex-col gap-2">

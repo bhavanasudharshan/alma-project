@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Alma Lead Intake",
-  description: "Immigration lead intake and assessment",
+  description: "Lead intake: prospective clients submit their details; an attorney reviews and reaches out.",
 };
 
 export default function RootLayout({

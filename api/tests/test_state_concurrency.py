@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import Settings
 from app.core.deps import (
     get_attorney_directory,
     get_email_service,
@@ -34,7 +33,9 @@ from tests.conftest import (
     ATTORNEY_EMAIL,
     ATTORNEY_PASSWORD,
     PDF_BYTES,
+    TEST_ROSTER,
     USE_POSTGRES,
+    build_settings,
     database_url_for_tests,
     engine_kwargs,
 )
@@ -47,12 +48,14 @@ PARALLEL_REQUESTS = 12
 def concurrent_client(tmp_path) -> Iterator[TestClient]:
     """A client whose every request gets its own DB session, like production."""
     database_url = database_url_for_tests(tmp_path)
-    settings = Settings(
+    # build_settings ignores the repo .env, so this fixture cannot inherit a roster.
+    settings = build_settings(
         database_url=database_url,
         upload_dir=str(tmp_path / "uploads"),
         jwt_secret_key="test-secret-key-of-sufficient-length",
         attorney_email=ATTORNEY_EMAIL,
         attorney_password=ATTORNEY_PASSWORD,
+        attorneys=TEST_ROSTER,
     )
     kwargs = engine_kwargs(database_url)
     if database_url.startswith("sqlite"):

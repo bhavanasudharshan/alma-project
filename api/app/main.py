@@ -79,8 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
         description=(
-            "Lead intake for an immigration practice: a public submission endpoint and "
-            "an authenticated queue for attorneys."
+            "Lead intake: a public submission endpoint for prospective clients, and an "
+            "authenticated queue for the attorneys who review them."
         ),
     )
     app.state.settings = settings

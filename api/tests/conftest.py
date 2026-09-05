@@ -85,6 +85,18 @@ def _disable_rate_limits() -> Iterator[None]:
     limiter.enabled = original
 
 
+def build_settings(**overrides) -> Settings:
+    """Construct Settings that ignore the developer's .env entirely.
+
+    ``_env_file=None`` matters: without it the suite inherits whatever is in the
+    repo-root .env, so the same code passes on one machine and fails on another. A
+    fresh clone caught exactly that — .env.example now ships an ATTORNEYS roster, which
+    silently overrode the single test account and broke login. Process environment is
+    still honoured, so the Postgres CI job can inject DATABASE_URL.
+    """
+    return Settings(_env_file=None, **overrides)
+
+
 def database_url_for_tests(tmp_path) -> str:
     """The engine under test: ambient Postgres in CI, else a throwaway SQLite file."""
     return AMBIENT_DATABASE_URL if USE_POSTGRES else f"sqlite:///{tmp_path / 'test.db'}"
@@ -100,7 +112,7 @@ def engine_kwargs(database_url: str) -> dict:
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     """Settings pointing at a throwaway database and upload directory."""
-    return Settings(
+    return build_settings(
         database_url=database_url_for_tests(tmp_path),
         upload_dir=str(tmp_path / "uploads"),
         jwt_secret_key="test-secret-key-of-sufficient-length",
