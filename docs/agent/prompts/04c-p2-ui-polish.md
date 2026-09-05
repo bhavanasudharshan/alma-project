@@ -1,0 +1,8 @@
+# Prompt 04c — P2: UI design pass (zero functional change)
+
+> **Role reminder**: you are Claude Code, implementing a design pass specified by the planning session. Functionality is FROZEN. Read docs/UI_CONCEPTS.md and implement it exactly; every deviation goes under "Questions for the architect", not into code. Time box: 20 min (compressed). Scope: tokens/light theme in globals.css, header, landing (/) and apply (/apply) per the concepts; thank-you, status, login and leads receive the palette ONLY — no layout or copy changes there. No commits.
+
+Reference markup approved by Bhavana: `docs/design/concepts/concept-{landing,apply,thankyou,status}.html` — match these structurally (hierarchy, spacing, tokens, copy) using Tailwind classes; they are static mockups, so keep every existing form binding, action and route exactly as is underneath. Do: light theme with the token palette; landing, apply, thank-you, status, login, leads restyled per the concept; copy exactly as written there; wordmark as plain text. Do NOT touch actions, API client, validation, middleware, route handlers, or api/. If the thank-you page cannot show the tracking code without a new API call or redirect change, leave that element out and say so.
+Verify: `git diff --stat` shows only presentational files; `pnpm lint && pnpm exec tsc --noEmit` clean; Playwright smoke green; screenshots of each page in the report (save to docs/img/, they are NOT to be committed until authorized).
+Propose commit: `style(web): light theme, landing and intake copy, status/confirmation layout`.
+End with "Questions for the architect".
