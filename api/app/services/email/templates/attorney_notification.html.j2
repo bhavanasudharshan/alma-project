@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <body style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #171717; line-height: 1.5;">
+    <p>A new lead was submitted.</p>
+    <table cellpadding="4" style="border-collapse: collapse;">
+      <tr><td><strong>Name</strong></td><td>{{ first_name }} {{ last_name }}</td></tr>
+      <tr><td><strong>Email</strong></td><td>{{ email }}</td></tr>
+      <tr><td><strong>Resume</strong></td><td>{{ resume_filename }} ({{ resume_content_type }})</td></tr>
+      <tr><td><strong>State</strong></td><td>{{ state }}</td></tr>
+      <tr><td><strong>Received</strong></td><td>{{ received_at }}</td></tr>
+    </table>
+    <p><a href="{{ internal_ui_url }}">Open the intake queue</a></p>
+  </body>
+</html>
