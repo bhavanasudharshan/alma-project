@@ -1,0 +1,40 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Node ---
+node_modules/
+.next/
+out/
+next-env.d.ts
+.pnpm-store/
+*.tsbuildinfo
+
+# --- Secrets & local state (S3: .env never enters the repo) ---
+.env
+.env.local
+.env.*.local
+
+# --- Private / unredacted agent material (CLAUDE.md privacy section) ---
+docs/private/
+docs/agent/sessions/*.raw.md
+
+# --- Runtime data (SQLite database, uploaded resumes) ---
+data/
+uploads/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Never committed: private planning notes, raw agent transcripts before redaction ---
+docs/private/
+docs/agent/sessions/*.raw.md
