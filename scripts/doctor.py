@@ -85,6 +85,7 @@ def check_app() -> bool:
     engine = "Postgres" if settings.database_url.startswith("postgresql") else "SQLite"
 
     line(OK, "environment", settings.environment)
+    line(OK, "attorney roster", f"{len(settings.roster)} account(s)")
     line(OK, "database", f"{engine}")
     line(OK, "file storage", "S3 / MinIO" if settings.uses_s3 else "local disk")
     line(OK, "email", "Resend" if settings.uses_resend else "console (logged, not sent)")
@@ -129,6 +130,41 @@ def check_app() -> bool:
         line(BAD, "leads table", "missing — run: make migrate")
         return False
 
+    return check_assignments(settings, db_engine)
+
+
+def check_assignments(settings, db_engine) -> bool:
+    """Warn when leads are owned by someone the roster no longer knows (FR10).
+
+    ``leads.assigned_to`` holds an email, not a foreign key, because the roster lives
+    in configuration. Removing an attorney from ``ATTORNEYS`` therefore leaves their
+    leads pointing at an address that no longer resolves to a name -- the assignment is
+    still a true historical fact, but nobody is picking that work up. Surface it rather
+    than let it sit silently.
+    """
+    from sqlalchemy import text as sql
+
+    known = {str(attorney.email).lower() for attorney in settings.roster}
+
+    with db_engine.connect() as connection:
+        rows = connection.execute(
+            sql(
+                "SELECT assigned_to, count(*) FROM leads "
+                "WHERE assigned_to IS NOT NULL GROUP BY assigned_to"
+            )
+        ).all()
+
+    orphaned = [(email, count) for email, count in rows if (email or "").lower() not in known]
+    if not orphaned:
+        assigned = sum(count for _, count in rows)
+        line(OK, "assignments", f"{assigned} assigned to roster attorneys")
+        return True
+
+    total = sum(count for _, count in orphaned)
+    line(WARN, "assignments", f"{total} lead(s) assigned to {len(orphaned)} unknown attorney(s)")
+    for email, count in orphaned:
+        print(f"        {email} ({count} lead(s)) is not in ATTORNEYS — reassign or restore")
+    # A warning, not a failure: the data is consistent, the roster simply moved on.
     return True
 
 

@@ -21,6 +21,10 @@ export type Lead = {
   resume_filename: string;
   resume_content_type: string;
   state: LeadState;
+  /** Owning attorney's email, or null when nobody has claimed the lead. */
+  assigned_to: string | null;
+  /** Display name resolved from the roster; null if the address is no longer configured. */
+  assigned_to_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -113,13 +117,29 @@ export function login(email: string, password: string): Promise<TokenResponse> {
 /** One page of the attorney queue, newest first (FR5). */
 export function listLeads(
   token: string,
-  params: { state?: LeadState; limit?: number; offset?: number } = {},
+  params: {
+    state?: LeadState;
+    /** An attorney's email, or "unassigned" for the unowned pool. */
+    assignedTo?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
 ): Promise<LeadPage> {
   const query = new URLSearchParams();
   if (params.state) query.set("state", params.state);
+  if (params.assignedTo) query.set("assigned_to", params.assignedTo);
   query.set("limit", String(params.limit ?? 20));
   query.set("offset", String(params.offset ?? 0));
   return requestJson<LeadPage>(`/api/v1/leads?${query}`, { token });
+}
+
+/** Set or clear a lead's owning attorney (FR10). Throws ApiError 422 for a stranger. */
+export function assignLead(token: string, id: string, assignee: string | null): Promise<Lead> {
+  return requestJson<Lead>(`/api/v1/leads/${id}/assign`, {
+    method: "PATCH",
+    token,
+    json: { assignee },
+  });
 }
 
 /** Move a lead through the pipeline (FR8). Throws ApiError 409 on an illegal move. */

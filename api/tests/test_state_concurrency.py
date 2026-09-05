@@ -87,9 +87,7 @@ def concurrent_client(tmp_path) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = session_per_request
     app.dependency_overrides[get_file_storage] = FakeStorage
     app.dependency_overrides[get_email_service] = FakeEmailService
-    app.dependency_overrides[get_attorney_directory] = lambda: AttorneyDirectory(
-        ATTORNEY_EMAIL, ATTORNEY_PASSWORD
-    )
+    app.dependency_overrides[get_attorney_directory] = lambda: AttorneyDirectory(settings.roster)
 
     with TestClient(app) as client:
         yield client

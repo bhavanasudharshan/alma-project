@@ -35,4 +35,6 @@ def login(
     Per-IP rate limited so the endpoint cannot be used for online guessing (SEC1).
     """
     subject = directory.authenticate(payload.email, payload.password)
-    return TokenResponse(access_token=create_access_token(subject, settings))
+    return TokenResponse(
+        access_token=create_access_token(subject, settings, name=directory.name_for(subject))
+    )

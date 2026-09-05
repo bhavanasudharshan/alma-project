@@ -4,8 +4,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { ApiError, updateLeadState, type LeadState } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { ApiError, assignLead, updateLeadState, type LeadState } from "@/lib/api";
+import { getToken, readSubjectUnverified } from "@/lib/auth";
 
 export type MarkResult = {
   status: "ok" | "already" | "error";
@@ -56,5 +56,40 @@ export async function changeLeadState(
       return { status: "error", message: "That lead no longer exists." };
     }
     return { status: "error", message: "Could not update the lead. Please try again." };
+  }
+}
+
+
+/**
+ * Claim a lead for the signed-in attorney (FR10).
+ *
+ * The assignee is taken from the caller's own token rather than the form, so the
+ * button cannot be used to assign work to somebody else. Reassignment is API-only in
+ * this slice.
+ */
+export async function assignToMe(leadId: string): Promise<MarkResult> {
+  const token = await getToken();
+  if (!token) {
+    return { status: "error", message: "Your session expired. Please sign in again." };
+  }
+
+  const me = readSubjectUnverified(token);
+  if (!me) {
+    return { status: "error", message: "Could not read your account. Please sign in again." };
+  }
+
+  try {
+    await assignLead(token, leadId, me);
+    revalidatePath("/leads");
+    return { status: "ok", message: "Assigned to you." };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422) {
+      revalidatePath("/leads");
+      return { status: "error", message: error.message };
+    }
+    if (error instanceof ApiError && error.status === 401) {
+      return { status: "error", message: "Your session expired. Please sign in again." };
+    }
+    return { status: "error", message: "Could not assign the lead. Please try again." };
   }
 }

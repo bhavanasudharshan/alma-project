@@ -48,6 +48,11 @@ class LeadRead(BaseModel):
     resume_filename: str
     resume_content_type: str
     state: LeadState
+    # FR10: the owning attorney's email, and the display name resolved from the roster.
+    # The name is None when the address is no longer configured -- the assignment is a
+    # historical fact that outlives a roster edit.
+    assigned_to: str | None = None
+    assigned_to_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -71,6 +76,8 @@ class LeadEventRead(BaseModel):
     id: uuid.UUID
     from_state: LeadState | None
     to_state: LeadState
+    from_assignee: str | None = None
+    to_assignee: str | None = None
     actor: str
     created_at: datetime
 
@@ -129,3 +136,9 @@ class LeadStateUpdate(BaseModel):
     """Requested state change (FR8)."""
 
     state: LeadState
+
+
+class LeadAssignmentUpdate(BaseModel):
+    """Requested assignment change (FR10). ``None`` clears the assignment."""
+
+    assignee: EmailStr | None = None

@@ -5,15 +5,27 @@ import uuid
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
-from app.core.deps import AttorneyDep, LeadServiceDep
+from app.core.deps import AttorneyDep, LeadServiceDep, get_attorney_directory
 from app.core.limiter import leads_limit, limiter, status_limit
+from app.core.security import AttorneyDirectory
 from app.db.models.lead import LeadState
 from app.schemas.lead import (
+    LeadAssignmentUpdate,
     LeadCreate,
     LeadDetail,
     LeadEventRead,
@@ -30,6 +42,18 @@ from app.services.storage.local import display_filename
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+DirectoryDep = Annotated[AttorneyDirectory, Depends(get_attorney_directory)]
+
+# The literal a caller passes to see only leads nobody owns.
+UNASSIGNED = "unassigned"
+
+
+def to_read(lead, directory: AttorneyDirectory) -> LeadRead:
+    """Serialise a lead, resolving the assignee's display name from the roster."""
+    payload = LeadRead.model_validate(lead)
+    payload.assigned_to_name = directory.name_for(lead.assigned_to)
+    return payload
 
 
 @router.post(
@@ -101,14 +125,26 @@ def create_lead(
 def list_leads(
     _: AttorneyDep,
     service: LeadServiceDep,
+    directory: DirectoryDep,
     state: Annotated[LeadState | None, Query(description="Filter by lead state")] = None,
+    assigned_to: Annotated[
+        str | None,
+        Query(description='Filter by assignee email, or "unassigned" for unowned leads'),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> LeadListResponse:
-    """Return one page of leads with the total matching count (FR5)."""
-    items, total = service.list_leads(state=state, limit=limit, offset=offset)
+    """Return one page of leads with the total matching count (FR5/FR10)."""
+    unassigned_only = assigned_to == UNASSIGNED
+    items, total = service.list_leads(
+        state=state,
+        assigned_to=None if unassigned_only else (assigned_to.lower() if assigned_to else None),
+        unassigned_only=unassigned_only,
+        limit=limit,
+        offset=offset,
+    )
     return LeadListResponse(
-        items=[LeadRead.model_validate(item) for item in items],
+        items=[to_read(item, directory) for item in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -150,10 +186,13 @@ def track_lead(request: Request, tracking_code: str, service: LeadServiceDep) ->
     summary="Fetch one lead with its audit trail (attorney only)",
     responses={404: {"description": "No such lead"}},
 )
-def get_lead(lead_id: uuid.UUID, _: AttorneyDep, service: LeadServiceDep) -> LeadDetail:
+def get_lead(
+    lead_id: uuid.UUID, _: AttorneyDep, service: LeadServiceDep, directory: DirectoryDep
+) -> LeadDetail:
     """Return a single lead, its state history (SEC9) and a presigned URL if available."""
     lead, events = service.get_lead_with_events(lead_id)
     detail = LeadDetail.model_validate(lead)
+    detail.assigned_to_name = directory.name_for(lead.assigned_to)
     detail.events = [LeadEventRead.model_validate(event) for event in events]
     detail.resume_url = service.resume_url(lead)
     return detail
@@ -196,6 +235,35 @@ def download_resume(
 
 
 @router.patch(
+    "/{lead_id}/assign",
+    response_model=LeadRead,
+    summary="Assign a lead to an attorney (attorney only)",
+    responses={
+        404: {"description": "No such lead"},
+        422: {"description": "The assignee is not a configured attorney"},
+    },
+)
+def assign_lead(
+    lead_id: uuid.UUID,
+    payload: LeadAssignmentUpdate,
+    attorney: AttorneyDep,
+    service: LeadServiceDep,
+    directory: DirectoryDep,
+) -> LeadRead:
+    """Set or clear a lead's owning attorney (FR10).
+
+    Idempotent: re-assigning to the current owner returns 200 and writes no audit row.
+    Any real change appends a ``lead_events`` row in the same transaction, so the trail
+    records who reassigned what and when.
+    """
+    assignee = str(payload.assignee) if payload.assignee else None
+    lead = service.assign_lead(
+        lead_id, assignee=assignee, actor=attorney, roster=set(directory.emails)
+    )
+    return to_read(lead, directory)
+
+
+@router.patch(
     "/{lead_id}/state",
     response_model=LeadRead,
     summary="Change a lead's state (attorney only)",
@@ -209,6 +277,7 @@ def update_lead_state(
     payload: LeadStateUpdate,
     attorney: AttorneyDep,
     service: LeadServiceDep,
+    directory: DirectoryDep,
     background_tasks: BackgroundTasks,
 ) -> LeadRead:
     """Move a lead through the intake pipeline (FR8).
@@ -226,4 +295,4 @@ def update_lead_state(
             service.send_status_change_email, LeadSnapshot.from_lead(change.lead)
         )
 
-    return LeadRead.model_validate(change.lead)
+    return to_read(change.lead, directory)

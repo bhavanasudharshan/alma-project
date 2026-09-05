@@ -42,14 +42,27 @@ export async function clearTokenCookie(): Promise<void> {
  * Safe for display only: the API re-verifies the token on every request, so a forged
  * cookie yields a 401 there. Nothing is authorised on the basis of this value.
  */
-export function readSubjectUnverified(token: string): string | null {
+function decodeClaimsUnverified(token: string): { sub?: string; name?: string } | null {
   const payload = token.split(".")[1];
   if (!payload) return null;
   try {
     const json = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString();
-    const claims = JSON.parse(json) as { sub?: string };
-    return claims.sub ?? null;
+    return JSON.parse(json) as { sub?: string; name?: string };
   } catch {
     return null;
   }
+}
+
+export function readSubjectUnverified(token: string): string | null {
+  return decodeClaimsUnverified(token)?.sub ?? null;
+}
+
+/**
+ * The attorney's display name, for the header and the "Mine" tab.
+ *
+ * Display only, like the subject: the API re-verifies the token and re-consults the
+ * roster on every request, so a forged name changes nothing but the greeting.
+ */
+export function readNameUnverified(token: string): string | null {
+  return decodeClaimsUnverified(token)?.name ?? null;
 }

@@ -12,6 +12,7 @@ local-disk storage on SQLite, with no Docker ($1).
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import BaseModel, EmailStr, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # config.py -> core -> app -> api -> <repo root>
@@ -21,6 +22,22 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # reach a deployed environment; startup logs a warning if they survive (S4).
 DEV_JWT_SECRET = "dev-only-change-me"  # noqa: S105
 DEV_ATTORNEY_PASSWORD = "changeme"  # noqa: S105
+
+
+class Attorney(BaseModel):
+    """One member of the attorney roster.
+
+    Held in configuration rather than a table on purpose: this build has one role and
+    no user management, so a table would be schema without a decision behind it. The
+    upgrade path is in DESIGN.md -- an ``attorneys`` table is the prerequisite for RBAC
+    and per-attorney routing, and this shape maps onto it one-for-one.
+    """
+
+    email: EmailStr
+    # SecretStr so the value cannot leak through a settings dump, a log line or a
+    # traceback: repr() and model_dump() render it as "**********" (S4).
+    password: SecretStr
+    name: str
 
 
 class Settings(BaseSettings):
@@ -57,6 +74,9 @@ class Settings(BaseSettings):
     # plaintext is never persisted anywhere.
     attorney_email: str = "attorney@example.com"
     attorney_password: str = DEV_ATTORNEY_PASSWORD
+    # Optional multi-attorney roster. When unset, the single account above is used, so
+    # the zero-config reviewer run still has exactly one login ($1).
+    attorneys: list[Attorney] = []
 
     # --- uploads (S2: untrusted uploads are bounded) -------------------------
     upload_dir: str = "uploads"
@@ -106,6 +126,19 @@ class Settings(BaseSettings):
         """Absolute upload root, anchored to the repo so cwd does not matter."""
         configured = Path(self.upload_dir)
         return configured if configured.is_absolute() else REPO_ROOT / configured
+
+    @property
+    def roster(self) -> list[Attorney]:
+        """Every attorney who can sign in, however they were configured (M4)."""
+        if self.attorneys:
+            return self.attorneys
+        return [
+            Attorney(
+                email=self.attorney_email,
+                password=self.attorney_password,
+                name="Attorney",
+            )
+        ]
 
     @property
     def uses_s3(self) -> bool:

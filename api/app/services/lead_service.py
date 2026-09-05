@@ -26,6 +26,7 @@ from app.services.exceptions import (
     LeadNotFound,
     ResumeTooLarge,
     StorageUnavailable,
+    UnknownAssignee,
     UnsupportedResumeType,
 )
 from app.services.lead_state import assert_transition, rule_for
@@ -165,6 +166,48 @@ class LeadService:
         rule = rule_for(previous, new_state)
         return StateChange(lead=lead, notify_prospect=bool(rule and rule.notify_prospect))
 
+    def assign_lead(
+        self, lead_id: uuid.UUID, assignee: str | None, actor: str, roster: set[str]
+    ) -> Lead:
+        """Assign a lead to an attorney, or clear the assignment (FR10).
+
+        Idempotent by design: asking for the assignee a lead already has is a no-op
+        that returns 200 and writes no audit row. Repeating a click, or two tabs
+        submitting the same claim, is not an error worth showing anyone -- unlike a
+        *state* change, where a repeat means the caller was looking at stale data.
+
+        :raises UnknownAssignee: if ``assignee`` is not on the configured roster.
+        """
+        if assignee is not None and assignee.lower() not in roster:
+            raise UnknownAssignee(f"{assignee} is not a configured attorney.")
+
+        target = assignee.lower() if assignee else None
+        lead = self.get_lead(lead_id)
+        previous = lead.assigned_to
+
+        if previous == target:
+            return lead
+
+        if not self._repo.update_assignee(lead.id, previous, target):
+            # Someone else claimed it between the read and the write.
+            self._db.rollback()
+            raise UnknownAssignee(
+                "That lead was assigned by someone else just now. Refresh and try again."
+            )
+
+        # Same transaction as the update, so the trail cannot disagree (SEC9).
+        self._repo.add_event(
+            lead_id=lead.id,
+            from_state=lead.state,
+            to_state=lead.state,
+            actor=actor,
+            from_assignee=previous,
+            to_assignee=target,
+        )
+        self._db.commit()
+        self._db.refresh(lead)
+        return lead
+
     # --- queries -------------------------------------------------------------
 
     def get_lead(self, lead_id: uuid.UUID) -> Lead:
@@ -197,10 +240,21 @@ class LeadService:
         return lead, self._repo.list_events(lead.id)
 
     def list_leads(
-        self, state: LeadState | None, limit: int, offset: int
+        self,
+        state: LeadState | None,
+        limit: int,
+        offset: int,
+        assigned_to: str | None = None,
+        unassigned_only: bool = False,
     ) -> tuple[list[Lead], int]:
-        """Return one page of leads plus the total count (FR5)."""
-        return self._repo.list(state=state, limit=limit, offset=offset)
+        """Return one page of leads plus the total count (FR5/FR10)."""
+        return self._repo.list(
+            state=state,
+            assigned_to=assigned_to,
+            unassigned_only=unassigned_only,
+            limit=limit,
+            offset=offset,
+        )
 
     def open_resume(self, lead: Lead) -> BinaryIO:
         """Open the stored resume for streaming (FR6)."""

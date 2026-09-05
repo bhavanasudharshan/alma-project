@@ -11,6 +11,8 @@ import path from "node:path";
 
 const ATTORNEY_EMAIL = process.env.E2E_ATTORNEY_EMAIL ?? "attorney@example.com";
 const ATTORNEY_PASSWORD = process.env.E2E_ATTORNEY_PASSWORD ?? "changeme";
+// Matches the default single-account roster name in Settings.roster.
+const ATTORNEY_NAME = process.env.E2E_ATTORNEY_NAME ?? "Attorney";
 const RESUME = path.join(__dirname, "fixtures", "resume.pdf");
 
 /** Unique per run so repeated runs against one database stay distinguishable. */
@@ -55,9 +57,28 @@ test("a lead can apply, and an attorney can find and progress them", async ({ pa
 
   const row = () => page.getByRole("row").filter({ hasText: applicant.email });
 
-  await test.step("the new lead is in the queue as PENDING", async () => {
+  await test.step("the new lead is in the queue as PENDING and unassigned", async () => {
     await expect(row()).toBeVisible();
     await expect(row().getByText("Pending")).toBeVisible();
+    await expect(row().getByRole("button", { name: "Assign to me" })).toBeVisible();
+  });
+
+  await test.step("claiming the lead shows the attorney's name (FR10)", async () => {
+    await row().getByRole("button", { name: "Assign to me" }).click();
+
+    // The roster resolves the email to a display name, and the button retires.
+    await expect(row().getByRole("button", { name: "Assign to me" })).toHaveCount(0);
+    await expect(row()).toContainText(ATTORNEY_NAME);
+  });
+
+  await test.step("the Mine tab shows only this attorney's leads", async () => {
+    await page.getByRole("link", { name: "Mine", exact: true }).click();
+    await expect(row()).toBeVisible();
+
+    await page.getByRole("link", { name: "Unassigned", exact: true }).click();
+    await expect(row()).toHaveCount(0);
+
+    await page.getByRole("link", { name: "All", exact: true }).click();
   });
 
   await test.step("marking reached out flips the badge and retires the button", async () => {

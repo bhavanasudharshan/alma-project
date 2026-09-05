@@ -55,6 +55,11 @@ class Lead(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
+    # FR10: which attorney owns this lead. An email rather than a foreign key, because
+    # the roster lives in configuration in this build; an attorneys table is the
+    # documented upgrade path (DESIGN.md). Nullable: unassigned is the normal start.
+    assigned_to: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+
     events: Mapped[list["LeadEvent"]] = relationship(
         back_populates="lead",
         cascade="all, delete-orphan",
@@ -88,6 +93,9 @@ class LeadEvent(Base):
     # Null on the creation row: the lead came into existence rather than moving.
     from_state: Mapped[LeadState | None] = mapped_column(String(32), nullable=True)
     to_state: Mapped[LeadState] = mapped_column(String(32))
+    # Assignment changes reuse this table: state stays put and these two carry the move.
+    from_assignee: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    to_assignee: Mapped[str | None] = mapped_column(String(320), nullable=True)
     # Attorney email for a manual change, or "system" for creation.
     actor: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

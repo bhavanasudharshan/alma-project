@@ -27,13 +27,22 @@ class LeadRepository:
         from_state: LeadState | None,
         to_state: LeadState,
         actor: str,
+        from_assignee: str | None = None,
+        to_assignee: str | None = None,
     ) -> LeadEvent:
         """Append an audit row (SEC9).
 
         Flushed but not committed: the caller commits it in the same transaction as the
         change it describes, so the trail and the lead can never disagree.
         """
-        event = LeadEvent(lead_id=lead_id, from_state=from_state, to_state=to_state, actor=actor)
+        event = LeadEvent(
+            lead_id=lead_id,
+            from_state=from_state,
+            to_state=to_state,
+            actor=actor,
+            from_assignee=from_assignee,
+            to_assignee=to_assignee,
+        )
         self._db.add(event)
         self._db.flush()
         return event
@@ -59,6 +68,8 @@ class LeadRepository:
     def list(
         self,
         state: LeadState | None = None,
+        assigned_to: str | None = None,
+        unassigned_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[Lead], int]:
@@ -66,7 +77,13 @@ class LeadRepository:
 
         The count runs against the same filter so the caller can paginate correctly.
         """
-        filters = [Lead.state == state] if state is not None else []
+        filters = []
+        if state is not None:
+            filters.append(Lead.state == state)
+        if unassigned_only:
+            filters.append(Lead.assigned_to.is_(None))
+        elif assigned_to is not None:
+            filters.append(Lead.assigned_to == assigned_to)
 
         total = self._db.scalar(select(func.count()).select_from(Lead).where(*filters)) or 0
         items = list(
@@ -79,6 +96,24 @@ class LeadRepository:
             )
         )
         return items, total
+
+    def update_assignee(self, lead_id: uuid.UUID, current: str | None, new: str | None) -> bool:
+        """Atomically move a lead from ``current`` to ``new`` assignee (FR10).
+
+        Same predicate-in-the-WHERE-clause approach as ``update_state``: the database,
+        not a prior SELECT, decides who wins when two attorneys claim the same lead at
+        the same moment.
+
+        :returns: ``True`` if this call performed the change.
+        """
+        condition = Lead.assigned_to.is_(None) if current is None else Lead.assigned_to == current
+        result = self._db.execute(
+            update(Lead)
+            .where(Lead.id == lead_id, condition)
+            .values(assigned_to=new, updated_at=datetime.now(UTC))
+            .execution_options(synchronize_session=False)
+        )
+        return bool(result.rowcount)
 
     def update_state(
         self, lead_id: uuid.UUID, current_state: LeadState, new_state: LeadState

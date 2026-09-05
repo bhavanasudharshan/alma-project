@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { getToken, readSubjectUnverified } from "@/lib/auth";
+import { getToken, readNameUnverified, readSubjectUnverified } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
 
 /** Internal chrome: who is signed in, and a way out. */
@@ -8,7 +8,9 @@ export default async function LeadsLayout({ children }: { children: React.ReactN
   const token = await getToken();
   if (!token) redirect("/login");
 
-  const attorney = readSubjectUnverified(token);
+  // Prefer the display name from the token; fall back to the email for older sessions.
+  const attorney = readNameUnverified(token) ?? readSubjectUnverified(token);
+  const attorneyEmail = readSubjectUnverified(token);
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-sunken">
@@ -17,7 +19,7 @@ export default async function LeadsLayout({ children }: { children: React.ReactN
           <span className="text-[22px] font-bold tracking-[-0.5px] text-brand">alma</span>
           <div className="flex items-center gap-4">
             {attorney && (
-              <span className="hidden text-sm text-muted sm:inline">
+              <span className="hidden text-sm text-muted sm:inline" title={attorneyEmail ?? undefined}>
                 {attorney}
               </span>
             )}

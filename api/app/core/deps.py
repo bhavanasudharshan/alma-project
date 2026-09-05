@@ -65,9 +65,11 @@ def get_file_storage() -> FileStorage:
 
 @lru_cache
 def get_attorney_directory() -> AttorneyDirectory:
-    """Hash the seeded attorney password once per process, not per request (S4)."""
+    """Hash every roster password once per process, not per request (S4)."""
     settings = get_settings()
-    return AttorneyDirectory(settings.attorney_email, settings.attorney_password)
+    directory = AttorneyDirectory(settings.roster)
+    logger.info("Attorney roster: %d account(s)", len(directory.emails))
+    return directory
 
 
 def get_lead_service(

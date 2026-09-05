@@ -19,6 +19,7 @@ from app.services.exceptions import (
     LeadNotFound,
     ResumeTooLarge,
     StorageUnavailable,
+    UnknownAssignee,
     UnsupportedResumeType,
 )
 
@@ -33,6 +34,7 @@ STATUS_BY_ERROR: dict[type[DomainError], int] = {
     ResumeTooLarge: status.HTTP_413_CONTENT_TOO_LARGE,
     StorageUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
     InvalidCredentials: status.HTTP_401_UNAUTHORIZED,
+    UnknownAssignee: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
 _STATUS_CODE_FALLBACK = {

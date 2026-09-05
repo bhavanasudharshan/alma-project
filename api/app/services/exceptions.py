@@ -61,3 +61,9 @@ class InvalidCredentials(DomainError):
     """Login failed. Deliberately does not say which half was wrong (S4)."""
 
     code = "invalid_credentials"
+
+
+class UnknownAssignee(DomainError):
+    """The requested assignee is not on the configured attorney roster (FR10)."""
+
+    code = "unknown_assignee"

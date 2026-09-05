@@ -34,6 +34,29 @@ USE_POSTGRES = AMBIENT_DATABASE_URL.startswith("postgresql")
 
 ATTORNEY_EMAIL = "attorney@example.com"
 ATTORNEY_PASSWORD = "test-password"
+ATTORNEY_NAME = "Test Attorney"
+
+# A second and third account, so roster behaviour is exercised rather than assumed.
+SECOND_ATTORNEY_EMAIL = "second@example.com"
+SECOND_ATTORNEY_PASSWORD = "second-password"
+SECOND_ATTORNEY_NAME = "Second Attorney"
+THIRD_ATTORNEY_EMAIL = "third@example.com"
+THIRD_ATTORNEY_PASSWORD = "third-password"
+THIRD_ATTORNEY_NAME = "Third Attorney"
+
+TEST_ROSTER = [
+    {"email": ATTORNEY_EMAIL, "password": ATTORNEY_PASSWORD, "name": ATTORNEY_NAME},
+    {
+        "email": SECOND_ATTORNEY_EMAIL,
+        "password": SECOND_ATTORNEY_PASSWORD,
+        "name": SECOND_ATTORNEY_NAME,
+    },
+    {
+        "email": THIRD_ATTORNEY_EMAIL,
+        "password": THIRD_ATTORNEY_PASSWORD,
+        "name": THIRD_ATTORNEY_NAME,
+    },
+]
 
 # Real PDF magic bytes: the service sniffs content, so a fixture must look like one.
 PDF_BYTES = b"%PDF-1.4 fake resume bytes"
@@ -83,6 +106,7 @@ def settings(tmp_path) -> Settings:
         jwt_secret_key="test-secret-key-of-sufficient-length",
         attorney_email=ATTORNEY_EMAIL,
         attorney_password=ATTORNEY_PASSWORD,
+        attorneys=TEST_ROSTER,
         attorney_notify_email="intake@example.com",
         max_resume_mb=5,
     )
@@ -132,9 +156,7 @@ def client(
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_file_storage] = lambda: storage
     app.dependency_overrides[get_email_service] = lambda: emails
-    app.dependency_overrides[get_attorney_directory] = lambda: AttorneyDirectory(
-        ATTORNEY_EMAIL, ATTORNEY_PASSWORD
-    )
+    app.dependency_overrides[get_attorney_directory] = lambda: AttorneyDirectory(settings.roster)
 
     # raise_server_exceptions=False so the 500 handler is exercised like in production.
     with TestClient(app, raise_server_exceptions=False) as test_client:

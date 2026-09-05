@@ -20,11 +20,12 @@ from app.services.lead_service import SYSTEM_ACTOR, generate_tracking_code  # no
 from app.services.storage.local import LocalDiskStorage, build_key  # noqa: E402
 
 # Fictional people, all @example.com. No real person's details belong in seed data.
+# (first, last, email, state, roster index to assign to — None leaves it unassigned)
 DEMO_LEADS = [
-    ("Ada", "Lovelace", "ada@example.com", LeadState.PENDING),
-    ("Grace", "Hopper", "grace@example.com", LeadState.PENDING),
-    ("Katherine", "Johnson", "katherine@example.com", LeadState.REACHED_OUT),
-    ("Dorothy", "Vaughan", "dorothy@example.com", LeadState.QUALIFIED),
+    ("Ada", "Lovelace", "ada@example.com", LeadState.PENDING, None),
+    ("Grace", "Hopper", "grace@example.com", LeadState.PENDING, 0),
+    ("Katherine", "Johnson", "katherine@example.com", LeadState.REACHED_OUT, 1),
+    ("Dorothy", "Vaughan", "dorothy@example.com", LeadState.QUALIFIED, 2),
 ]
 
 # How each lead got where it is, so the audit trail and the status portal look real.
@@ -87,7 +88,8 @@ def main() -> int:
     created = 0
 
     with SessionLocal() as session:
-        for first, last, email, target in DEMO_LEADS:
+        roster = settings.roster
+        for first, last, email, target, attorney_index in DEMO_LEADS:
             existing = session.query(Lead).filter(Lead.email == email).one_or_none()
             if existing is not None:
                 continue
@@ -107,6 +109,13 @@ def main() -> int:
                 resume_content_type="application/pdf",
                 state=target,
                 tracking_code=generate_tracking_code(),
+                # Spread across the roster so the "Mine" tab and the assignment column
+                # have something to show; wraps when fewer attorneys are configured.
+                assigned_to=(
+                    str(roster[attorney_index % len(roster)].email)
+                    if attorney_index is not None
+                    else None
+                ),
             )
             session.add(lead)
             session.flush()
@@ -144,6 +153,7 @@ def main() -> int:
     else:
         print("Demo leads already present; nothing to do.")
     print(f"Leads in the database: {total}  ({', '.join(f'{k}={v}' for k, v in by_state.items())})")
+    print(f"Attorneys on the roster: {', '.join(str(a.email) for a in get_settings().roster)}")
     print("Sign in at http://localhost:3000/login with the credentials in your .env")
     return 0
 
