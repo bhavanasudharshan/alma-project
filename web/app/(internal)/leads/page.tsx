@@ -2,9 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
-import { MarkReachedOut } from "@/components/mark-reached-out";
+import { StateActionButton } from "@/components/state-action-button";
+import { NEXT_ACTION } from "@/lib/lead-actions";
 import { StateBadge } from "@/components/state-badge";
-import { ApiError, listLeads, type LeadState } from "@/lib/api";
+import { ApiError, LEAD_STATES, listLeads, type LeadState } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { absoluteTime, relativeTime } from "@/lib/format";
 
@@ -15,6 +16,7 @@ const PAGE_SIZE = 20;
 const TABS: { label: string; state?: LeadState }[] = [
   { label: "Pending", state: "PENDING" },
   { label: "Reached out", state: "REACHED_OUT" },
+  { label: "Qualified", state: "QUALIFIED" },
   { label: "All" },
 ];
 
@@ -32,7 +34,9 @@ export default async function LeadsPage({
   if (!token) redirect("/login");
 
   const params = await searchParams;
-  const state = params.state === "PENDING" || params.state === "REACHED_OUT" ? params.state : undefined;
+  const state = LEAD_STATES.includes(params.state as LeadState)
+    ? (params.state as LeadState)
+    : undefined;
   const offset = Math.max(0, Number.parseInt(params.offset ?? "0", 10) || 0);
 
   let page;
@@ -144,8 +148,8 @@ export default async function LeadsPage({
                     </a>
                   </td>
                   <td className="px-4 py-3">
-                    {lead.state === "PENDING" ? (
-                      <MarkReachedOut leadId={lead.id} />
+                    {NEXT_ACTION[lead.state] ? (
+                      <StateActionButton leadId={lead.id} {...NEXT_ACTION[lead.state]!} />
                     ) : (
                       <span className="text-xs text-gray-500">—</span>
                     )}

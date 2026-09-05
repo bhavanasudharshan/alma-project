@@ -26,7 +26,8 @@ class TransitionRule:
 
 TRANSITIONS: dict[LeadState, dict[LeadState, TransitionRule]] = {
     LeadState.PENDING: {LeadState.REACHED_OUT: TransitionRule(notify_prospect=True)},
-    LeadState.REACHED_OUT: {},
+    LeadState.REACHED_OUT: {LeadState.QUALIFIED: TransitionRule(notify_prospect=True)},
+    LeadState.QUALIFIED: {},
 }
 
 

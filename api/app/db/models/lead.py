@@ -19,6 +19,7 @@ class LeadState(StrEnum):
 
     PENDING = "PENDING"
     REACHED_OUT = "REACHED_OUT"
+    QUALIFIED = "QUALIFIED"
 
 
 def _utcnow() -> datetime:

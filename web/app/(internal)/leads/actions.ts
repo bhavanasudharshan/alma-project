@@ -4,7 +4,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { ApiError, updateLeadState } from "@/lib/api";
+import { ApiError, updateLeadState, type LeadState } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
 export type MarkResult = {
@@ -13,7 +13,10 @@ export type MarkResult = {
 };
 
 /**
- * Mark a lead as reached out (FR8).
+ * Move a lead to `target` (FR8).
+ *
+ * Generic over the target state on purpose: adding QUALIFIED needed no change here,
+ * because the legal moves live in the API's transition table, not in the UI (E1).
  *
  * A 409 carrying `already_in_state` is not an error from the attorney's point of
  * view: someone (or another tab) already made the same change. The API's SQL guard
@@ -21,16 +24,19 @@ export type MarkResult = {
  * revalidate and say so calmly. A 409 with any other code is a genuinely illegal move
  * and is surfaced as an error.
  */
-export async function markReachedOut(leadId: string): Promise<MarkResult> {
+export async function changeLeadState(
+  leadId: string,
+  target: LeadState,
+): Promise<MarkResult> {
   const token = await getToken();
   if (!token) {
     return { status: "error", message: "Your session expired. Please sign in again." };
   }
 
   try {
-    await updateLeadState(token, leadId, "REACHED_OUT");
+    await updateLeadState(token, leadId, target);
     revalidatePath("/leads");
-    return { status: "ok", message: "Marked as reached out." };
+    return { status: "ok", message: "Updated." };
   } catch (error) {
     // P1 split the 409 vocabulary. `already_in_state` means the lead is already where
     // the attorney wanted it — benign, so refresh and say so calmly. Any other 409 is a
@@ -38,7 +44,7 @@ export async function markReachedOut(leadId: string): Promise<MarkResult> {
     if (error instanceof ApiError && error.status === 409) {
       revalidatePath("/leads");
       if (error.code === "already_in_state") {
-        return { status: "already", message: "Already marked as reached out — list refreshed." };
+        return { status: "already", message: "Already in that state — list refreshed." };
       }
       return { status: "error", message: error.message };
     }
