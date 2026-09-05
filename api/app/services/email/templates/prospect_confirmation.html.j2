@@ -14,7 +14,11 @@
     </ul>
     <p>
       Your tracking code is <strong style="font-family: ui-monospace, monospace;">{{ tracking_code }}</strong>.
+      {% if status_portal_url %}
+      <a href="{{ status_portal_url }}">Check your status</a> any time with it.
+      {% else %}
       Keep it — you will be able to check your status with it.
+      {% endif %}
     </p>
     <p>No action is needed from you right now.</p>
     <p>— Alma</p>

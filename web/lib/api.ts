@@ -9,7 +9,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /** Lead lifecycle states, mirroring `LeadState` in the API. */
-export const LEAD_STATES = ["PENDING", "REACHED_OUT"] as const;
+export const LEAD_STATES = ["PENDING", "REACHED_OUT", "QUALIFIED"] as const;
 export type LeadState = (typeof LEAD_STATES)[number];
 
 /** A lead as returned by the API. The storage key is deliberately not exposed. */
@@ -33,6 +33,14 @@ export type LeadPage = {
 };
 
 export type TokenResponse = { access_token: string; token_type: string };
+
+/** What a prospect may see about their own submission (EXT1). No PII by design. */
+export type PublicLeadStatus = {
+  state: LeadState;
+  submitted_at: string;
+  updated_at: string;
+  events: { to_state: LeadState; at: string }[];
+};
 
 /** The error envelope every non-2xx response uses: `{ detail, code }`. */
 export type ApiErrorBody = { detail: string; code?: string };
@@ -121,6 +129,11 @@ export function updateLeadState(token: string, id: string, state: LeadState): Pr
     token,
     json: { state },
   });
+}
+
+/** Public status lookup by tracking code (EXT1). No auth. */
+export function trackLead(code: string): Promise<PublicLeadStatus> {
+  return requestJson<PublicLeadStatus>(`/api/v1/leads/track/${encodeURIComponent(code)}`);
 }
 
 /** The raw resume response, for a route handler to proxy back to the browser (FR6). */

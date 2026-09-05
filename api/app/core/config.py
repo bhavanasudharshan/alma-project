@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     # Used to build the "open this lead" link in the attorney notification email.
     internal_ui_url: str = "http://localhost:3000/leads"
+    # EXT1: where the prospect checks their own status with the tracking code.
+    status_portal_url: str = "http://localhost:3000/status"
 
     # --- persistence ($1: zero-infra local run defaults to SQLite) -----------
     database_url: str = "sqlite:///./data/alma.db"
@@ -71,6 +73,8 @@ class Settings(BaseSettings):
     # slowapi syntax: "<count>/<period>".
     rate_limit_leads: str = "5/10minutes"
     rate_limit_login: str = "10/5minutes"
+    # EXT1: the status portal is public and cheap, so a looser but real budget.
+    rate_limit_status: str = "20/minute"
     # In-memory today; point at redis://... to share limits across replicas.
     rate_limit_storage_url: str = "memory://"
 

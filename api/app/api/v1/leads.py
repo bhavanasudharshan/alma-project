@@ -11,7 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from app.core.deps import AttorneyDep, LeadServiceDep
-from app.core.limiter import leads_limit, limiter
+from app.core.limiter import leads_limit, limiter, status_limit
 from app.db.models.lead import LeadState
 from app.schemas.lead import (
     LeadCreate,
@@ -20,6 +20,8 @@ from app.schemas.lead import (
     LeadListResponse,
     LeadRead,
     LeadStateUpdate,
+    PublicLeadStatus,
+    PublicStatusEvent,
 )
 from app.services.email.messages import LeadSnapshot
 from app.services.lead_service import ResumeUpload
@@ -113,6 +115,35 @@ def list_leads(
     )
 
 
+# Declared before "/{lead_id}" on purpose: FastAPI matches in order, and otherwise
+# "track" would be captured by the UUID path parameter and 422.
+@router.get(
+    "/track/{tracking_code}",
+    response_model=PublicLeadStatus,
+    summary="Check a submission's status with its tracking code (public)",
+    responses={
+        404: {"description": "No submission matches that code"},
+        429: {"description": "Too many lookups from this address"},
+    },
+)
+@limiter.limit(status_limit)
+def track_lead(request: Request, tracking_code: str, service: LeadServiceDep) -> PublicLeadStatus:
+    """Return the prospect-visible status for a tracking code (EXT1).
+
+    Public and unauthenticated, so the payload is state and timestamps only -- never
+    name, email, resume or the internal lead id (SEC7). Rate limited per IP.
+    """
+    lead, events = service.public_status(tracking_code)
+    return PublicLeadStatus(
+        state=lead.state,
+        submitted_at=lead.created_at,
+        updated_at=lead.updated_at,
+        events=[
+            PublicStatusEvent(to_state=event.to_state, at=event.created_at) for event in events
+        ],
+    )
+
+
 @router.get(
     "/{lead_id}",
     response_model=LeadDetail,
@@ -178,10 +209,21 @@ def update_lead_state(
     payload: LeadStateUpdate,
     attorney: AttorneyDep,
     service: LeadServiceDep,
+    background_tasks: BackgroundTasks,
 ) -> LeadRead:
     """Move a lead through the intake pipeline (FR8).
 
     409 ``already_in_state`` when it is already there, 409 ``invalid_transition`` for a
     move the pipeline forbids (FR9). The attorney is recorded in the audit trail.
+
+    When the transition rule says so, the prospect is emailed after the commit -- same
+    ordering as intake, so a provider outage can never undo an accepted change (R1).
     """
-    return LeadRead.model_validate(service.change_state(lead_id, payload.state, actor=attorney))
+    change = service.change_state(lead_id, payload.state, actor=attorney)
+
+    if change.notify_prospect:
+        background_tasks.add_task(
+            service.send_status_change_email, LeadSnapshot.from_lead(change.lead)
+        )
+
+    return LeadRead.model_validate(change.lead)

@@ -31,3 +31,8 @@ def leads_limit() -> str:
 def login_limit() -> str:
     """Login attempt limit, e.g. ``10/5minutes``."""
     return get_settings().rate_limit_login
+
+
+def status_limit() -> str:
+    """Public status lookup limit, e.g. ``20/minute`` (EXT1/SEC7)."""
+    return get_settings().rate_limit_status

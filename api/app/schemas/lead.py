@@ -87,6 +87,35 @@ class LeadDetail(LeadRead):
     resume_url: str | None = None
 
 
+class PublicStatusEvent(BaseModel):
+    """One timeline entry on the public status page. No actor, no PII."""
+
+    to_state: LeadState
+    at: datetime
+
+    _as_utc = field_validator("at", mode="after")(
+        lambda cls, value: value if value.tzinfo else value.replace(tzinfo=UTC)
+    )
+
+
+class PublicLeadStatus(BaseModel):
+    """What a prospect may see about their own submission (EXT1/SEC7).
+
+    Deliberately minimal: state and timestamps only. No name, email, resume filename
+    or lead id -- a tracking code is a bearer credential shared by email, so it must
+    unlock the least information that still answers "where am I in the process?".
+    """
+
+    state: LeadState
+    submitted_at: datetime
+    updated_at: datetime
+    events: list[PublicStatusEvent] = []
+
+    _as_utc_public = field_validator("submitted_at", "updated_at", mode="after")(
+        lambda cls, value: value if value.tzinfo else value.replace(tzinfo=UTC)
+    )
+
+
 class LeadListResponse(BaseModel):
     """One page of leads plus the total matching count (FR5)."""
 

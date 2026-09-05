@@ -48,6 +48,10 @@ class LeadRepository:
             )
         )
 
+    def get_by_tracking_code(self, tracking_code: str) -> Lead | None:
+        """Look a lead up by its public tracking code (EXT1)."""
+        return self._db.scalar(select(Lead).where(Lead.tracking_code == tracking_code))
+
     def get(self, lead_id: uuid.UUID) -> Lead | None:
         """Return the lead with ``lead_id``, or ``None``."""
         return self._db.get(Lead, lead_id)

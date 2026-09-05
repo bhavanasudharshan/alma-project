@@ -15,7 +15,12 @@ from app.db.models.lead import Lead, LeadEvent, LeadState
 from app.repositories.lead_repo import LeadRepository
 from app.schemas.lead import LeadCreate
 from app.services.email.base import EmailService
-from app.services.email.messages import LeadSnapshot, attorney_notification, prospect_confirmation
+from app.services.email.messages import (
+    LeadSnapshot,
+    attorney_notification,
+    prospect_confirmation,
+    status_changed,
+)
 from app.services.exceptions import (
     InvalidTransition,
     LeadNotFound,
@@ -23,7 +28,7 @@ from app.services.exceptions import (
     StorageUnavailable,
     UnsupportedResumeType,
 )
-from app.services.lead_state import assert_transition
+from app.services.lead_state import assert_transition, rule_for
 from app.services.storage.base import FileStorage
 from app.services.storage.local import build_key
 
@@ -47,6 +52,19 @@ _SIGNATURE_EXTENSIONS: dict[str, set[str]] = {
 def generate_tracking_code() -> str:
     """Return a high-entropy, human-transcribable tracking code (EXT1)."""
     return b32encode(secrets.token_bytes(_TRACKING_CODE_BYTES)).decode().rstrip("=")
+
+
+@dataclass(frozen=True)
+class StateChange:
+    """The outcome of a transition: the lead, and whether to tell the prospect.
+
+    The decision belongs to the service (it reads the transition table); the
+    *scheduling* belongs to the router, which owns BackgroundTasks. Returning it keeps
+    that split honest instead of letting the router re-derive business rules.
+    """
+
+    lead: "Lead"
+    notify_prospect: bool
 
 
 @dataclass
@@ -120,7 +138,7 @@ class LeadService:
         self._db.refresh(lead)
         return lead
 
-    def change_state(self, lead_id: uuid.UUID, new_state: LeadState, actor: str) -> Lead:
+    def change_state(self, lead_id: uuid.UUID, new_state: LeadState, actor: str) -> StateChange:
         """Move a lead to ``new_state`` if the transition table allows it (FR8/FR9).
 
         Two guards, deliberately: ``assert_transition`` is a fast in-process check that
@@ -143,7 +161,9 @@ class LeadService:
         self._repo.add_event(lead_id=lead.id, from_state=previous, to_state=new_state, actor=actor)
         self._db.commit()
         self._db.refresh(lead)
-        return lead
+
+        rule = rule_for(previous, new_state)
+        return StateChange(lead=lead, notify_prospect=bool(rule and rule.notify_prospect))
 
     # --- queries -------------------------------------------------------------
 
@@ -153,6 +173,23 @@ class LeadService:
         if lead is None:
             raise LeadNotFound(f"No lead with id {lead_id}.")
         return lead
+
+    def public_status(self, tracking_code: str) -> tuple[Lead, list[LeadEvent]]:
+        """Look a lead up by its public tracking code (EXT1).
+
+        The comparison is constant-time so response timing cannot be used to confirm
+        that a guessed prefix is on the right track, and the not-found error carries no
+        hint about whether the code was well-formed (SEC7). With 160 bits of entropy
+        guessing is infeasible anyway; this closes the cheap side channel too.
+        """
+        candidate = (tracking_code or "").strip().upper()
+        lead = self._repo.get_by_tracking_code(candidate) if candidate else None
+
+        if lead is None or not secrets.compare_digest(lead.tracking_code, candidate):
+            # Same message and shape for malformed, unknown and empty codes.
+            raise LeadNotFound("No submission matches that tracking code.")
+
+        return lead, self._repo.list_events(lead.id)
 
     def get_lead_with_events(self, lead_id: uuid.UUID) -> tuple[Lead, list[LeadEvent]]:
         """Return a lead and its audit trail (SEC9)."""
@@ -178,6 +215,30 @@ class LeadService:
 
     # --- notifications -------------------------------------------------------
 
+    def send_status_change_email(self, lead: LeadSnapshot) -> None:
+        """Tell the prospect their status moved (EXT2).
+
+        Same shape and same guarantees as the intake emails: a detached snapshot,
+        scheduled after the transaction commits, and provider failures logged rather
+        than raised. The price is the same too -- at-most-once delivery, which is why
+        DESIGN.md names the transactional outbox as the fix.
+        """
+        message = status_changed(lead, self._settings.status_portal_url)
+        if message is None:
+            logger.info("No prospect copy for state %s; not sending", lead.state)
+            return
+
+        try:
+            self._email.send(
+                to=message.to,
+                subject=message.subject,
+                text=message.text,
+                html=message.html,
+                lead_id=lead.id,
+            )
+        except Exception:  # noqa: BLE001 - a broken provider must not surface here
+            logger.exception("Failed to send the status update for lead_id=%s", lead.id)
+
     def send_intake_emails(self, lead: LeadSnapshot) -> None:
         """Send prospect confirmation and attorney notification (FR2/FR3).
 
@@ -190,7 +251,7 @@ class LeadService:
         the upgrade is a transactional outbox, noted in DESIGN.md.
         """
         messages = (
-            prospect_confirmation(lead),
+            prospect_confirmation(lead, self._settings.status_portal_url),
             attorney_notification(
                 lead,
                 notify_email=self._settings.attorney_notify_email,
